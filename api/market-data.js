@@ -19,6 +19,6 @@ module.exports=async(req,res)=>{
                   try{const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...base,FID_COND_MRKT_DIV_CODE:"KQ"},tk);kosdaqStocks=parse(r.output);if(!kosdaqStocks.length)kosdaqErr=JSON.stringify(r).slice(0,200);}catch(e){kosdaqErr=e.message}
                   const codes=new Set(kospiStocks.map(s=>s.code));
                   const all=[...kospiStocks,...kosdaqStocks.filter(s=>!codes.has(s.code))];
-                  res.status(200).json({ok:true,date:new Date().toLocaleDateString("ko-KR",{timeZone:"Asia/Seoul"}),topVolume:[...all].sort((a,b)=>b.amt-a.amt),topRising:[...all].filter(s=>s.change>0).sort((a,b)=>{if(b.isLimit!==a.isLimit)return b.isLimit?1:-1;return b.change-a.change}),limitUp:all.filter(s=>s.isLimit),total:all.length,debug:{kospi:kospiStocks.length,kosdaq:kosdaqStocks.length,kosdaqErr}});
+                  res.status(200).json({ok:true,_token:tk,date:new Date().toLocaleDateString("ko-KR",{timeZone:"Asia/Seoul"}),topVolume:[...all].sort((a,b)=>b.amt-a.amt),topRising:[...all].filter(s=>s.change>0).sort((a,b)=>{if(b.isLimit!==a.isLimit)return b.isLimit?1:-1;return b.change-a.change}),limitUp:all.filter(s=>s.isLimit),total:all.length,debug:{kospi:kospiStocks.length,kosdaq:kosdaqStocks.length,kosdaqErr}});
         }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
