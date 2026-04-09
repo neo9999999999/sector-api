@@ -20,6 +20,7 @@ function kisGet(path, trId, params, token) {
     req.on("error", e => reject(new Error(trId + " N:" + e.message))); req.end();
   });
 }
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 function fmt(n) { if (!n) return "0"; if (n >= 1e12) return (n/1e12).toFixed(1)+"조"; if (n >= 1e8) return Math.round(n/1e8)+"억"; return n.toLocaleString(); }
 
 module.exports = async function handler(req, res) {
@@ -29,21 +30,11 @@ module.exports = async function handler(req, res) {
     var td = await kisPost("/oauth2/tokenP", { grant_type: "client_credentials", appkey: process.env.KIS_APP_KEY, appsecret: process.env.KIS_APP_SECRET });
     if (!td.access_token) return res.status(500).json({ ok: false, error: "token_fail", detail: td });
     var tk = td.access_token;
+    var vp = { FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:"" };
 
-    var [volK, volQ] = await Promise.all([
-      kisGet("/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000", {
-        FID_COND_MRKT_DIV_CODE:"J",FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",
-        FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
-        FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",
-        FID_VOL_CNT:"",FID_INPUT_DATE_1:"",
-      }, tk),
-      kisGet("/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000", {
-        FID_COND_MRKT_DIV_CODE:"Q",FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",
-        FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
-        FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",
-        FID_VOL_CNT:"",FID_INPUT_DATE_1:"",
-      }, tk),
-    ]);
+    var volK = await kisGet("/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000", Object.assign({FID_COND_MRKT_DIV_CODE:"J"}, vp), tk);
+    await delay(300);
+    var volQ = await kisGet("/uapi/domestic-stock/v1/quotations/volume-rank", "FHPST01710000", Object.assign({FID_COND_MRKT_DIV_CODE:"Q"}, vp), tk);
 
     var all = [...(volK.output||[]),...(volQ.output||[])].map(i => ({
       name: i.hts_kor_isnm, code: i.mksc_shrn_iscd, price: +i.stck_prpr,
