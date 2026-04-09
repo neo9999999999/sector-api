@@ -7,6 +7,7 @@ function parse(arr){return(arr||[]).map(i=>({name:i.hts_kor_isnm,code:i.mksc_shr
 
 module.exports=async(req,res)=>{
   res.setHeader("Access-Control-Allow-Origin","*");
+  res.setHeader("Cache-Control","no-store");
   if(req.method==="OPTIONS")return res.status(200).end();
   try{
     const td=await post("/oauth2/tokenP",{grant_type:"client_credentials",appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET});
@@ -14,24 +15,37 @@ module.exports=async(req,res)=>{
     const tk=td.access_token;
     const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
 
-    // 거래대금 상위 30 코스피
-    const vK=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J"},tk);
-    await w(400);
-    // 거래대금 상위 30 코스닥
-    const vQ=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q"},tk);
+    // 코스피 거래대금 상위 30
+    let kospiStocks=[], kosdaqStocks=[];
+    try{
+      const vK=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J"},tk);
+      kospiStocks=parse(vK.output);
+    }catch(e){console.error("kospi err:",e.message)}
 
-    // 합치기 (중복 제거)
-    const all=parse(vK.output).concat(parse(vQ.output).filter(s=>!parse(vK.output).find(k=>k.code===s.code)));
+    await w(600);
+
+    // 코스닥 거래대금 상위 30
+    try{
+      const vQ=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q"},tk);
+      kosdaqStocks=parse(vQ.output);
+    }catch(e){console.error("kosdaq err:",e.message)}
+
+    // 중복 제거 후 합치기
+    const kosdaqCodes=new Set(kospiStocks.map(s=>s.code));
+    const all=[...kospiStocks,...kosdaqStocks.filter(s=>!kosdaqCodes.has(s.code))];
+
+    const topVolume=[...all].sort((a,b)=>b.amt-a.amt);
+    const topRising=[...all].filter(s=>s.change>0).sort((a,b)=>{if(b.isLimit!==a.isLimit)return b.isLimit?1:-1;return b.change-a.change});
+    const limitUp=all.filter(s=>s.isLimit);
 
     res.status(200).json({
       ok:true,
       date:new Date().toLocaleDateString("ko-KR",{timeZone:"Asia/Seoul"}),
-      all,
-      topVolume:all.sort((a,b)=>b.amt-a.amt),
-      topRising:all.filter(s=>s.change>0).sort((a,b)=>{if(b.isLimit!==a.isLimit)return b.isLimit?1:-1;return b.change-a.change}),
-      limitUp:all.filter(s=>s.isLimit),
+      topVolume,
+      topRising,
+      limitUp,
       total:all.length,
-      debug:{kospi:vK.output?.length||0,kosdaq:vQ.output?.length||0}
+      debug:{kospi:kospiStocks.length,kosdaq:kosdaqStocks.length}
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
