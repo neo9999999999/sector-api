@@ -22,7 +22,7 @@ module.exports=async(req,res)=>{
       kospiStocks=parse(vK.output);
     }catch(e){console.error("kospi err:",e.message)}
 
-    await w(600);
+    await w(1200);
 
     // 코스닥 거래대금 상위 30
     try{
