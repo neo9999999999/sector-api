@@ -290,8 +290,8 @@ async function load(){
     secMap={};
     for(const s of allS){const sec=gS(s.name);if(sec){if(!secMap[sec])secMap[sec]=[];secMap[sec].push(s);}}
     const now=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
-    const kp=d.debug?.kospi||0,kq=d.debug?.kosdaq||0,gj=d.debug?.gainJ||0,gk=d.debug?.gainKQ||0;
-    document.getElementById('hsub').innerHTML=`<span class="live"></span>${d.date} · 거래대금코스피${kp}/코스닥${kq} 등락률코스피${gj}/코스닥${gk} · ${now}`;
+    const kp=d.debug?.kospi||0,kq=d.debug?.kosdaq||0,gj=d.debug?.gainJ||0,gk=d.debug?.gainQ||0;
+    document.getElementById('hsub').innerHTML=`<span class="live"></span>${d.date} · 거래대금 ${kp+kq}종목 · 등락률 ${d.debug?.gainLen||0}종목${d.debug?.gainApiOk?'':' (fallback)'} · ${now}`;
     rS(d);rV(d);rR(d);
     if(d._token)rHist(d._token);else{try{const r=await fetch(HIST+'?t='+Date.now());const hd=await r.json();if(hd.ok){_btData=hd;renderBT();}}catch(e){}}
   }catch(e){
@@ -337,7 +337,7 @@ function rS(d){
   document.getElementById('ts').innerHTML=h;
 }
 
-function qB(s){return s.market==='Q'?'<span class="qbadge">Q</span>':''}
+function qB(s){return ''} // 시장구분은 API 미지원
 function sRow(s,rk){const cc=s.change>0?'up':s.change<0?'dn':'fl';const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';return `<div class="srow" onclick="showStock('${s.code}')"><span class="srk">${rk}</span><span class="sn">${s.name}${qB(s)}</span><div class="sr"><div class="sp">${s.price.toLocaleString()}원</div><div class="sc ${cc}">${cs}</div>${s.amtFmt?`<div class="sa">${s.amtFmt}</div>`:''}</div></div>`;}
 
 /* ─── 거래대금 탭 ─── */
