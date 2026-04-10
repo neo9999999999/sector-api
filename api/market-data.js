@@ -35,33 +35,6 @@ function parseS(arr,mkt=""){
   }))
 }
 
-// 등락률 순위 시도: 여러 파라미터 조합 시도
-async function tryGainRank(tk){
-  const attempts=[
-    // 시도1: FID_COND_SCR_DIV_CODE 20171
-    {scr:"20171",mkt:"J",iscd:"0000"},
-    // 시도2: FID_COND_SCR_DIV_CODE 20170
-    {scr:"20170",mkt:"J",iscd:"0000"},
-    // 시도3: FID_INPUT_CNT_1 비워서
-    {scr:"20171",mkt:"J",iscd:"0000",cnt:""},
-  ];
-  for(const a of attempts){
-    try{
-      const p={FID_COND_SCR_DIV_CODE:a.scr,FID_INPUT_ISCD:a.iscd,FID_COND_MRKT_DIV_CODE:a.mkt,
-               FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:a.cnt!==undefined?a.cnt:"0",
-               FID_PRC_CLS_CODE:"0",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",
-               FID_VOL_CNT:"",FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",
-               FID_DIV_CLS_CODE:"0",FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
-      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",p,tk);
-      if(r.output&&r.output.length>0){
-        return{list:parseS(r.output,"J"),tried:JSON.stringify(a),rt:r.rt_cd,msg:r.msg1};
-      }
-    }catch(e){}
-    await w(300);
-  }
-  return null;
-}
-
 module.exports=async(req,res)=>{
   res.setHeader("Access-Control-Allow-Origin","*");
   res.setHeader("Cache-Control","no-store");
@@ -70,7 +43,7 @@ module.exports=async(req,res)=>{
     let tk;
     try{tk=await getToken();}catch(e){return res.status(500).json({ok:false,error:"token",d:e.message});}
 
-    // 거래대금 순위
+    // 거래대금 순위 (거래대금 조건 없이 전체)
     const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
               FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
               FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",
@@ -80,16 +53,44 @@ module.exports=async(req,res)=>{
 
     await w(400);
 
-    // 등락률 순위 — 여러 파라미터 시도
-    const gainResult=await tryGainRank(tk);
-
+    // 등락률 순위 — chgrate-rank 시도 (tr_id 변경 시도 포함)
     let gainRanking=[];
-    let gainInfo={tried:gainResult?.tried||"all failed",rt:gainResult?.rt,msg:gainResult?.msg};
+    let gainApiOk=false;
+    let gainErr="";
 
-    if(gainResult?.list?.length){
-      gainRanking=gainResult.list.filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
-    }else{
-      // fallback: volAll 기반
+    // 시도1: FHPST01700000 + FID_COND_SCR_DIV_CODE 20171
+    try{
+      const gp={FID_COND_SCR_DIV_CODE:"20171",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
+                FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",
+                FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",
+                FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
+                FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",gp,tk);
+      if(r.output?.length){
+        gainRanking=parseS(r.output,"J").filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
+        gainApiOk=true;
+      } else gainErr=`rt:${r.rt_cd} msg:${r.msg1}`;
+    }catch(e){gainErr=e.message.slice(0,80);}
+
+    // 시도2: tr_id FHPST01700000 + scr 20170
+    if(!gainApiOk){
+      await w(300);
+      try{
+        const gp={FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
+                  FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",
+                  FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",
+                  FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
+                  FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+        const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",gp,tk);
+        if(r.output?.length){
+          gainRanking=parseS(r.output,"J").filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
+          gainApiOk=true;
+        } else gainErr+=` | rt:${r.rt_cd} msg:${r.msg1}`;
+      }catch(e){gainErr+=` | `+e.message.slice(0,60);}
+    }
+
+    // fallback: volAll 기반 정렬 (거래대금 무관 상위)
+    if(!gainApiOk){
       gainRanking=[...volAll].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
     }
 
@@ -106,9 +107,9 @@ module.exports=async(req,res)=>{
       debug:{
         kospi:volAll.filter(s=>s.market!=="Q").length,
         kosdaq:volAll.filter(s=>s.market==="Q").length,
-        gainApiLen:gainResult?.list?.length||0,
-        gainFallback:!gainResult?.list?.length,
-        gainInfo
+        gainApiOk,
+        gainLen:gainRanking.length,
+        gainErr:gainErr||null
       }
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
