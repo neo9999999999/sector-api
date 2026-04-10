@@ -29,7 +29,7 @@ module.exports=async(req,res)=>{
     let volKQarr=[],volKQErr="",volKQMeta="";
     try{
       // 코스닥: 마켓코드 "Q", ISCD "1000"
-      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000",FID_BLNG_CLS_CODE:"1"},tk);
       volKQarr=r.output||[];volKQMeta=JSON.stringify({rt_cd:r.rt_cd,msg1:r.msg1,len:(r.output||[]).length});
     }catch(e){volKQErr=e.message.slice(0,80);}
     await w(300);
@@ -47,7 +47,7 @@ module.exports=async(req,res)=>{
     }catch(e){gainErr+="J:"+e.message.slice(0,60)+" ";}
     await w(600);
     try{
-      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000",FID_BLNG_CLS_CODE:"1"},tk);
       gainQ=parseS(r.output,"Q");
     }catch(e){gainErr+="Q:"+e.message.slice(0,60);}
 
