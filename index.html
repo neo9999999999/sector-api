@@ -35,6 +35,7 @@ body{font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;b
 .sname{font-size:18px;font-weight:800;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .ssub{font-size:12px;color:#aaa;margin-top:3px}
 .lbadge{background:#E53935;color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px}
+.qbadge{background:#2563a8;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;vertical-align:middle;margin-left:3px}
 .ring-w{text-align:center;flex-shrink:0}
 .ring-sc{font-size:17px;font-weight:900}
 .ring-lb{font-size:10px;color:#aaa;margin-top:1px}
@@ -91,7 +92,12 @@ body{font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;b
 /* Backtest */
 .bt-card{background:#fff;border-radius:12px;overflow:hidden;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
 .bt-hdr{display:grid;grid-template-columns:56px 1fr 42px 50px 30px;gap:4px;padding:8px 14px;background:#fafafa;border-bottom:1px solid #f0f0f0;font-size:11px;color:#aaa;font-weight:600}
-.bt-rw{display:grid;grid-template-columns:56px 1fr 42px 50px 30px;gap:4px;padding:8px 14px;border-bottom:.5px solid #f8f8f8;font-size:12px;align-items:center}
+.bt-rw{display:flex;flex-direction:column;padding:8px 14px;border-bottom:.5px solid #f8f8f8;cursor:pointer}
+.bt-rw-top{display:grid;grid-template-columns:46px 1fr 50px 30px;gap:4px;font-size:12px;align-items:center}
+.bt-detail{display:none;margin-top:6px;background:#F8F9FC;border-radius:8px;padding:8px 10px;font-size:11px}
+.bt-rw.expanded .bt-detail{display:block}
+.dd-row{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:.3px solid #e8e8e8}
+.dd-row:last-child{border-bottom:none}
 .tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700}
 .tu{background:#fdecea;color:#c0392b}.td{background:#e8f0fe;color:#1a56db}
 .sp-row{display:grid;grid-template-columns:68px 1fr 40px 50px 24px;gap:5px;align-items:center;padding:7px 14px;border-bottom:.5px solid #f5f5f5;font-size:12px}
@@ -232,7 +238,8 @@ function rS(d){
   document.getElementById('ts').innerHTML=h;
 }
 
-function sRow(s,rk){const cc=s.change>0?'up':s.change<0?'dn':'fl';const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';return `<div class="srow" onclick="showStock('${s.code}')"><span class="srk">${rk}</span><span class="sn">${s.name}</span><div class="sr"><div class="sp">${s.price.toLocaleString()}원</div><div class="sc ${cc}">${cs}</div>${s.amtFmt?`<div class="sa">${s.amtFmt}</div>`:''}</div></div>`;}
+function qB(s){return s.market==='Q'?'<span class="qbadge">Q</span>':''}
+function sRow(s,rk){const cc=s.change>0?'up':s.change<0?'dn':'fl';const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';return `<div class="srow" onclick="showStock('${s.code}')"><span class="srk">${rk}</span><span class="sn">${s.name}${qB(s)}</span><div class="sr"><div class="sp">${s.price.toLocaleString()}원</div><div class="sc ${cc}">${cs}</div>${s.amtFmt?`<div class="sa">${s.amtFmt}</div>`:''}</div></div>`;}
 
 /* ─── 거래대금 탭 ─── */
 function rV(d){
@@ -242,7 +249,7 @@ function rV(d){
     const sec=gS(s.name)||'기타',sc2=SC[sec]||'#ccc';
     const cc=s.change>0?'up':s.change<0?'dn':'fl';
     const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';
-    h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt}</div></div><div class="vr"><div class="vc ${cc}">${cs}</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
+    h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt}</div></div><div class="vr"><div class="vc ${cc}">${cs}</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
   });
   h+=`<div class="foot">코스피+코스닥 거래대금 내림차순</div>`;
   document.getElementById('tv').innerHTML=h;
@@ -269,7 +276,7 @@ function rR(d){
   }else{
     lst.slice(0,60).forEach((s,i)=>{
       const sec=gS(s.name)||'기타',sc2=SC[sec]||'#ccc';
-      h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt||''}</div></div><div class="vr"><div class="vc up">+${s.change.toFixed(2)}%</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
+      h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt||''}</div></div><div class="vr"><div class="vc up">+${s.change.toFixed(2)}%</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
     });
   }
   h+=`<div class="foot">상한가 우선 · 등락률 내림차순 · 코스피+코스닥</div>`;
@@ -368,7 +375,24 @@ function renderBT(){
     const hr=x.nextDayReturn!==null,w=hr&&x.nextDayReturn>0;
     const ds=x.date?x.date.slice(4,6)+'.'+x.date.slice(6):'';
     const isCur=x.date===curDate;
-    h+=`<div class="bt-rw" style="${isCur?'background:#FFF3F3;':''}" onclick="jumpToDate('${x.date}')"><span style="color:${isCur?'#E53935':'#aaa'};font-weight:${isCur?800:400}">${ds}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#555">${x.topSector}</span><span style="color:#E53935;font-weight:700">+${(x.leaderChange||0).toFixed(1)}%</span><span style="text-align:right;font-weight:700;color:${hr?(w?'#E53935':'#2563a8'):'#ccc'}">${hr?fp(x.nextDayReturn):'-'}</span><span style="text-align:center">${hr?`<span class="tag ${w?'tu':'td'}">${w?'승':'패'}</span>`:'-'}</span></div>`;
+    // 인라인 섹터 상세
+    const tops2=(x.topSectors||[]).slice(0,5);
+    let detailHtml='';
+    const medals2=['🥇','🥈','🥉','4️⃣','5️⃣'];
+    tops2.forEach((t,i)=>{
+      const c2=SC[t.sector]||'#888';
+      detailHtml+=`<div class="dd-row"><span style="font-size:13px">${medals2[i]}</span><span style="font-weight:700;color:${c2};flex:1">${t.sector}</span><span style="color:#aaa">${t.leader||'-'}</span><span style="color:#E53935;font-weight:700;margin-left:6px">+${(t.avg||0).toFixed(2)}%</span></div>`;
+    });
+    if(!detailHtml)detailHtml=`<div style="color:#aaa;font-size:11px">데이터없음</div>`;
+    h+=`<div class="bt-rw${isCur?' expanded':''}" style="${isCur?'background:#FFF3F3;':''}" onclick="this.classList.toggle('expanded');jumpToDate('${x.date}')">
+      <div class="bt-rw-top">
+        <span style="color:${isCur?'#E53935':'#aaa'};font-weight:${isCur?800:400}">${ds}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:${SC[x.topSector]||'#555'}">${x.topSector}</span>
+        <span style="text-align:right;font-weight:700;color:${hr?(w?'#E53935':'#2563a8'):'#ccc'}">${hr?fp(x.nextDayReturn):'-'}</span>
+        <span style="text-align:center">${hr?`<span class="tag ${w?'tu':'td'}">${w?'승':'패'}</span>`:'-'}</span>
+      </div>
+      <div class="bt-detail">${detailHtml}</div>
+    </div>`;
   }
   h+=`</div></div><div class="foot">한국투자증권 OpenAPI · 실제 종가 기준 · 2026.01~</div>`;
   document.getElementById('tb').innerHTML=h;
