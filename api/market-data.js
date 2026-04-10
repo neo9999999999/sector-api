@@ -41,8 +41,8 @@ module.exports=async(req,res)=>{
       FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",
       FID_COND_MRKT_DIV_CODE:"J",FID_DIV_CLS_CODE:"0",
       FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
-      FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",
-      FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""
+      FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"0",
+      FID_INPUT_PRICE_2:"1000000",FID_VOL_CNT:"100000",FID_INPUT_DATE_1:""
     };
     const volRes=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",vp,tk);
     const volAll=parseRank(volRes.output,"J");
@@ -53,7 +53,7 @@ module.exports=async(req,res)=>{
     const gp={
       FID_COND_SCR_DIV_CODE:"20170",    // 공식: 20170 (기존에 20171로 잘못 씀)
       FID_INPUT_ISCD:"0000",
-      FID_RANK_SORT_CLS_CODE:"0000",    // 공식: 0000 (기존에 "1" 사용)
+      FID_RANK_SORT_CLS_CODE:"0",    // 공식: 0000 (기존에 "1" 사용)
       FID_INPUT_CNT_1:"0",
       FID_PRC_CLS_CODE:"0",
       FID_INPUT_PRICE_1:"0",            // 공식: "0"
