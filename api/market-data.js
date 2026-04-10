@@ -22,7 +22,8 @@ const KOSDAQ=new Set([
 ]);
 
 function parseS(arr,mkt=""){
-  return(arr||[]).filter(i=>i&&i.hts_kor_isnm).map(i=>({
+  const ETF_PREFIX=/^(KODEX|TIGER|KBSTAR|ARIRANG|KOSEF|HANARO|PLUS|RISE|ACE|SOL|WON|TIMEFOLIO|KB|NH|SMART|SAMSUNG)/;
+return(arr||[]).filter(i=>i&&i.hts_kor_isnm&&!ETF_PREFIX.test(i.hts_kor_isnm)).map(i=>({
     name:i.hts_kor_isnm,
     code:i.mksc_shrn_iscd||i.stck_shrn_iscd,
     price:+i.stck_prpr,
@@ -65,7 +66,7 @@ module.exports=async(req,res)=>{
                 FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",
                 FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
                 FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
-      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",gp,tk);
+      const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,tk);
       if(r.output?.length){
         gainRanking=parseS(r.output,"J").filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
         gainApiOk=true;
@@ -81,7 +82,7 @@ module.exports=async(req,res)=>{
                   FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",
                   FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
                   FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
-        const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",gp,tk);
+        const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,tk);
         if(r.output?.length){
           gainRanking=parseS(r.output,"J").filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
           gainApiOk=true;
