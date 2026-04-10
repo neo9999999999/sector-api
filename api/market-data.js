@@ -14,7 +14,7 @@ async function getToken(){
   return td.access_token;
 }
 
-function parseRank(arr, mkt){
+function parseRank(arr,mkt){
   return(arr||[]).filter(i=>i&&i.hts_kor_isnm).map(i=>({
     name:i.hts_kor_isnm,
     code:i.mksc_shrn_iscd||i.stck_shrn_iscd,
@@ -36,59 +36,80 @@ module.exports=async(req,res)=>{
     let tk;
     try{tk=await getToken();}catch(e){return res.status(500).json({ok:false,error:"token",d:e.message});}
 
-    // ① 거래대금 순위 — 코스피(J)
-    const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
-              FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
-              FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",
-              FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
-    const volJ=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",vp,tk);
-    const volKospi=parseRank(volJ.output,"J");
-    await w(600);
+    // ① 거래대금 순위 (코스피+코스닥 통합)
+    const vp={
+      FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",
+      FID_COND_MRKT_DIV_CODE:"J",FID_DIV_CLS_CODE:"0",
+      FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
+      FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",
+      FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""
+    };
+    const volRes=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",vp,tk);
+    const volAll=parseRank(volRes.output,"J");
+    await w(700);
 
-    // ② 등락률 순위 — 코스피(J) + 코스닥(Q 시도)
-    const gp={FID_COND_SCR_DIV_CODE:"20171",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
-              FID_RANK_SORT_CLS_CODE:"1",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",
-              FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",
-              FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
-              FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+    // ② 등락률 순위 — 코스피(J) + 코스닥(Q) 공식 파라미터 사용
+    // 공식 예제: FID_COND_SCR_DIV_CODE="20170", FID_RANK_SORT_CLS_CODE="0000"
+    const gp={
+      FID_COND_SCR_DIV_CODE:"20170",    // 공식: 20170 (기존에 20171로 잘못 씀)
+      FID_INPUT_ISCD:"0000",
+      FID_RANK_SORT_CLS_CODE:"0000",    // 공식: 0000 (기존에 "1" 사용)
+      FID_INPUT_CNT_1:"0",
+      FID_PRC_CLS_CODE:"0",
+      FID_INPUT_PRICE_1:"0",            // 공식: "0"
+      FID_INPUT_PRICE_2:"1000000",      // 공식: "1000000"
+      FID_VOL_CNT:"100000",             // 공식: "100000"
+      FID_TRGT_CLS_CODE:"0",
+      FID_TRGT_EXLS_CLS_CODE:"0",
+      FID_DIV_CLS_CODE:"0",
+      FID_RSFL_RATE1:"0",
+      FID_RSFL_RATE2:""
+    };
+
     let gainJ=[],gainQ=[],gainErr="";
-    try{
-      const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,tk);
-      if(r.output?.length) gainJ=parseRank(r.output,"J");
-      else gainErr="J:rt"+r.rt_cd+":"+r.msg1;
-    }catch(e){gainErr="J:"+e.message.slice(0,60);}
-    await w(600);
 
-    // 코스닥 등락률
+    // 코스피 등락률
     try{
       const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",
-        {...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
+        {...gp,FID_COND_MRKT_DIV_CODE:"J"},tk);
+      if(r.output?.length) gainJ=parseRank(r.output,"J");
+      else gainErr+="J:rt"+r.rt_cd+":"+r.msg1;
+    }catch(e){gainErr+="J:"+e.message.slice(0,60);}
+    await w(700);
+
+    // 코스닥 등락률 (공식 문서 확인: "Q" 지원)
+    try{
+      const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",
+        {...gp,FID_COND_MRKT_DIV_CODE:"Q"},tk);
       if(r.output?.length) gainQ=parseRank(r.output,"Q");
-    }catch(e){ gainErr+=" Q:"+e.message.slice(0,40); }
+      else gainErr+=" Q:rt"+r.rt_cd+":"+r.msg1;
+    }catch(e){gainErr+=" Q:"+e.message.slice(0,60);}
 
     // 코스피+코스닥 합산 → 등락률 내림차순
-    let gainAll=[...gainJ];
-    const seenG=new Set(gainJ.map(s=>s.code));
-    gainQ.forEach(s=>{if(!seenG.has(s.code)){gainAll.push(s);seenG.add(s.code);}});
-    const gainRanking=gainAll.filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
+    const seen=new Set();
+    const gainAll=[...gainJ,...gainQ].filter(s=>{
+      if(seen.has(s.code))return false;
+      seen.add(s.code);return true;
+    });
+    const gainRanking=gainAll.filter(s=>s.change>0)
+      .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
     const gainApiOk=gainJ.length>0||gainQ.length>0;
 
-    // 거래대금도 fallback gainRanking
+    // fallback
     if(!gainApiOk){
-      gainRanking.push(...[...volKospi].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change));
+      gainRanking.push(...[...volAll].filter(s=>s.change>0)
+        .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change));
     }
-
-    const rising=[...volKospi].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
 
     res.status(200).json({
       ok:true,_token:tk,
       date:new Date().toLocaleDateString("ko-KR",{timeZone:"Asia/Seoul"}),
-      topVolume:[...volKospi].sort((a,b)=>b.amt-a.amt),
-      topRising:rising,
+      topVolume:[...volAll].sort((a,b)=>b.amt-a.amt),
+      topRising:[...volAll].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change),
       gainRanking,
-      limitUp:[...gainRanking,...volKospi].filter(s=>s.isLimit),
-      total:volKospi.length,
-      debug:{kospi:volKospi.length,gainJ:gainJ.length,gainQ:gainQ.length,gainApiOk,gainErr:gainErr||null}
+      limitUp:gainRanking.filter(s=>s.isLimit),
+      total:volAll.length,
+      debug:{kospi:volAll.length,gainJ:gainJ.length,gainQ:gainQ.length,gainApiOk,gainErr:gainErr||null}
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
