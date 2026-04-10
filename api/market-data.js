@@ -22,7 +22,7 @@ const KOSDAQ=new Set([
   '현대로템','퍼스텍','빅텍','HLB','알테오젠','HLB생명과학','HLB제약','리가켐바이오',
   '한전기술','한전KPS','두산에너빌리티','비에이치아이','우리기술',
   '에스엠','JYP Ent.','키움증권','크래프톤','YG PLUS','와이지엔터테인먼트',
-  '한화에어로스페이스','LIG넥스원','두산로보틱스','레인보우로보틱스','에스비비테크',
+  'LIG넥스원','두산로보틱스','레인보우로보틱스','에스비비테크',
   '티로보틱스','뉴로메카','씨메스','HD현대로보틱스','로보스타','현대위아',
   '카카오게임즈','넷마블','엔씨소프트','펄어비스','컴투스','게임빌',
   '코스맥스','한국콜마','클리오','브이티','실리콘투','아이패밀리에스씨',
@@ -67,16 +67,25 @@ module.exports=async(req,res)=>{
               FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"0",
               FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
               FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+    // KOSPI 등락률 top100
     try{
       const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",gp,tk);
       if(r.output&&r.output.length>0){
         gainList=parseS(r.output,"J");
-        // gainList에 없는 종목을 volAll에서 보완
         gainList.forEach(s=>{if(!seenVol.has(s.code)){volAll.push(s);seenVol.add(s.code);}});
-      } else {
-        gainErr=`rt_cd:${r.rt_cd} msg:${r.msg1}`;
-      }
-    }catch(e){gainErr=e.message.slice(0,80);}
+      } else gainErr+=`P:rt${r.rt_cd}:${r.msg1} `;
+    }catch(e){gainErr+=`P:${e.message.slice(0,50)} `;}
+    await w(200);
+    // KOSDAQ 등락률 top100 (FHKST01700000 시도)
+    try{
+      const rq=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHKST01700000",
+        {...gp,FID_COND_MRKT_DIV_CODE:"Q"},tk);
+      if(rq.output&&rq.output.length>0){
+        const kq=parseS(rq.output,"Q");
+        kq.forEach(s=>{if(!seenVol.has(s.code)){volAll.push(s);seenVol.add(s.code);}});
+        gainList=[...gainList,...kq];
+      } else gainErr+=`K:rt${rq.rt_cd}:${rq.msg1}`;
+    }catch(e){gainErr+=`K:${e.message.slice(0,50)}`;}
 
     await w(300);
 
