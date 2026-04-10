@@ -27,7 +27,8 @@ function parseRank(arr,mkt){
     vol:+(i.acml_vol||0),
     isLimit:+i.prdy_ctrt>=29,
     limitHour:i.hgpr_hour||"",
-    market:mkt
+    market:mkt,
+    _rawAmt:+(i.acml_tr_pbmn||0)
   }))
 }
 
@@ -102,7 +103,11 @@ module.exports=async(req,res)=>{
     const volMap=new Map(volAll.map(s=>[s.code,{amt:s.amt,amtFmt:s.amtFmt}]));
     gainRanking.forEach(s=>{
       const v=volMap.get(s.code);
-      if(v){s.amt=v.amt;s.amtFmt=v.amtFmt;}
+      if(v&&v.amt>0){s.amt=v.amt;s.amtFmt=v.amtFmt;}
+      else if(!s.amt&&s.vol&&s.price){
+        s.amt=s.vol*s.price;
+        s.amtFmt=fmt(s.amt);
+      }
     });
 
     // fallback
