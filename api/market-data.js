@@ -4,6 +4,7 @@ function get(p,id,q,tk){return new Promise((y,n)=>{const qs=new URLSearchParams(
 function w(ms){return new Promise(r=>setTimeout(r,ms))}
 function fmt(n){if(!n)return"";if(n>=1e12)return(n/1e12).toFixed(1)+"조";if(n>=1e8)return Math.round(n/1e8)+"억";if(n>=1e4)return Math.round(n/1e4)+"만";return n.toLocaleString()}
 
+const {saveDaily,getKSTDate,getKSTHour}=require("./save-daily");
 let _cache={token:"",exp:0};
 async function getToken(){
   const now=Date.now();
@@ -24,6 +25,7 @@ function parseRank(arr,mkt){
     amtFmt:fmt(+(i.acml_tr_pbmn||0)),
     vol:+(i.acml_vol||0),
     isLimit:+i.prdy_ctrt>=29,
+    limitHour:i.hgpr_hour||"",
     market:mkt
   }))
 }
@@ -99,6 +101,31 @@ module.exports=async(req,res)=>{
     if(!gainApiOk){
       gainRanking.push(...[...volAll].filter(s=>s.change>0)
         .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change));
+    }
+
+    // 장마감 후(15:30~16:30 KST) 자동 저장
+    const kstHour=getKSTHour();
+    if(kstHour>=1530&&kstHour<=1630&&process.env.GITHUB_TOKEN){
+      const today=getKSTDate();
+      const payload={
+        date:today,
+        topSectors:Object.entries(
+          gainRanking.slice(0,30).reduce((acc,s)=>{
+            const sec=s.sectorFromApi||"기타";
+            if(!acc[sec])acc[sec]=[];
+            acc[sec].push({name:s.name,code:s.code,change:s.change,amt:s.amt,isLimit:s.isLimit});
+            return acc;
+          },{})
+        ).map(([sector,stocks])=>({
+          sector,
+          stocks:stocks.sort((a,b)=>b.change-a.change),
+          avg:+(stocks.reduce((t,s)=>t+s.change,0)/stocks.length).toFixed(2),
+          leader:stocks[0]?.name||""
+        })).sort((a,b)=>b.avg-a.avg).slice(0,8),
+        gainTop30:gainRanking.slice(0,30).map(s=>({name:s.name,code:s.code,change:s.change,market:s.market,isLimit:s.isLimit,amt:s.amt})),
+        volTop30:([...volAll].sort((a,b)=>b.amt-a.amt)).slice(0,30).map(s=>({name:s.name,code:s.code,change:s.change,amt:s.amt}))
+      };
+      saveDaily(today,payload).catch(()=>{});
     }
 
     res.status(200).json({

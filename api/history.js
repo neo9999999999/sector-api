@@ -5,6 +5,30 @@ function w(ms){return new Promise(r=>setTimeout(r,ms))}
 function today(){const d=new Date();return d.getFullYear().toString()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")}
 function chgRate(close,vrss){const prev=close-vrss;return prev?+(vrss/prev*100).toFixed(2):0}
 
+// 저장된 일일 데이터 경로
+const path=require('path');
+const fs=require('fs');
+
+async function loadSavedDaily(){
+  // Vercel에서는 /var/task/data/daily 경로
+  const dirs=[
+    path.join(process.cwd(),'data/daily'),
+    path.join(__dirname,'../data/daily')
+  ];
+  let dir=null;
+  for(const d of dirs){try{if(fs.existsSync(d)){dir=d;break;}}catch{}}
+  if(!dir)return null;
+  try{
+    const files=fs.readdirSync(dir).filter(f=>f.endsWith('.json')).sort();
+    if(files.length===0)return null;
+    const data=files.map(f=>{
+      try{return JSON.parse(fs.readFileSync(path.join(dir,f),'utf8'));}
+      catch{return null;}
+    }).filter(Boolean);
+    return data;
+  }catch(e){return null;}
+}
+
 const STOCKS=[
   {code:"005930",name:"삼성전자",sector:"반도체"},
   {code:"000660",name:"SK하이닉스",sector:"반도체"},
@@ -27,6 +51,27 @@ module.exports=async(req,res)=>{
   res.setHeader("Access-Control-Allow-Origin","*");res.setHeader("Cache-Control","no-store");
   if(req.method==="OPTIONS")return res.status(200).end();
   const from=req.query.from||"20260102";const to=req.query.to||today();
+
+  // 저장된 일일 데이터가 있으면 우선 사용
+  const saved=await loadSavedDaily();
+  if(saved&&saved.length>=3){
+    const backtest=saved.map((day,i)=>{
+      const ss=(day.topSectors||[]);
+      const top=ss[0]||null;
+      let nextDayReturn=null;
+      if(top&&i+1<saved.length){
+        const nxt=saved[i+1].topSectors?.find(s=>s.sector===top.sector);
+        if(nxt)nextDayReturn=+(nxt.avg||0);
+      }
+      const hasNext=i+1<saved.length;
+      const won=hasNext&&nextDayReturn>0;
+      return{date:day.date,topSector:top?.sector||"-",leaderChange:+(top?.avg||0),topSectors:ss,nextDayReturn:hasNext?nextDayReturn:null,won:hasNext?won:null};
+    });
+    const rated=backtest.filter(x=>x.nextDayReturn!==null);
+    const wins=rated.filter(x=>x.won).length;
+    const winRate=rated.length?Math.round(wins/rated.length*100):0;
+    return res.status(200).json({ok:true,from:saved[0]?.date,to:saved[saved.length-1]?.date,backtest,winRate,dataSource:"saved",stockCount:0,dates:saved.length});
+  }
   let tk=req.query.token||null;
   if(!tk){
     try{const td=await post("/oauth2/tokenP",{grant_type:"client_credentials",appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET});if(!td.access_token)return res.status(500).json({ok:false,error:"token_fail",d:JSON.stringify(td).slice(0,200)});tk=td.access_token;}

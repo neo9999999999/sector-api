@@ -48,6 +48,13 @@ body{font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;b
 .sp{font-size:13px;color:#555}.sc{font-size:16px;font-weight:900}.sa{font-size:11px;color:#bbb;margin-top:1px}
 .mbtn{width:100%;border:none;background:#f9f9f9;color:#888;font-size:12px;padding:10px;cursor:pointer}
 .vrow{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:10px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.vcard{border-radius:12px;padding:12px 14px;margin-bottom:7px;display:flex;align-items:center;gap:8px;cursor:pointer;border-left:4px solid #ccc}
+.vcard .vn{font-size:14px;font-weight:700;flex:1}
+.vcard .vtag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.3);color:inherit}
+.vcard .vpct{font-size:13px;font-weight:800;min-width:64px;text-align:right}
+.vcard .vamt{font-size:11px;color:rgba(255,255,255,.8);min-width:52px;text-align:right}
+.vcard .vprice{font-size:12px;opacity:.8}
+.vcard-lim{font-size:10px;background:rgba(255,255,255,.25);padding:1px 5px;border-radius:3px;margin-left:2px}
 .vrow:active{background:#fafafa}
 .vrk{font-size:13px;font-weight:700;color:#ccc;width:22px;flex-shrink:0}
 .vi{flex:1;min-width:0}.vn{font-size:15px;font-weight:700}
@@ -340,17 +347,48 @@ function rS(d){
 function qB(s){return s.market==='Q'?'<span class="qbadge">Q</span>':''}
 function sRow(s,rk){const cc=s.change>0?'up':s.change<0?'dn':'fl';const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';return `<div class="srow" onclick="showStock('${s.code}')"><span class="srk">${rk}</span><span class="sn">${s.name}${qB(s)}</span><div class="sr"><div class="sp">${s.price.toLocaleString()}원</div><div class="sc ${cc}">${cs}</div>${s.amtFmt?`<div class="sa">${s.amtFmt}</div>`:''}</div></div>`;}
 
+/* 섹터별 카드 색상 */
+const SECTOR_COLORS={
+  '반도체':'#4F86C6','반도체장비':'#5B9BD5','방산':'#7B68EE','이란전쟁':'#7B68EE',
+  '통신':'#26A69A','조선':'#26C6DA','원전':'#42A5F5','전력기기':'#29B6F6',
+  '자동차':'#66BB6A','2차전지':'#FFA726','바이오':'#EC407A','화학':'#AB47BC',
+  '건설':'#8D6E63','철강':'#78909C','금융':'#26A69A','기타':'#90A4AE'
+};
+function getSectorColor(sec){
+  for(const[k,v]of Object.entries(SECTOR_COLORS))if(sec.includes(k))return v;
+  return '#90A4AE';
+}
 /* ─── 거래대금 탭 ─── */
 function rV(d){
-  const lst=(d.topVolume||[]).slice(0,40);
-  let h=`<div class="sec-hd">거래대금 상위 <span class="pill">${lst.length}개</span></div>`;
+  // 4%이상 상승 + 거래대금 있는 종목 (거래대금 내림차순)
+  const lst4=(d.topVolume||[]).filter(s=>s.change>=4).sort((a,b)=>b.amt-a.amt);
+  const lstAll=(d.topVolume||[]).sort((a,b)=>b.amt-a.amt);
+  const lst=lst4.length>=3?lst4:lstAll;
+  const title=lst4.length>=3?`거래대금 상위 4%이상 상승종목`:`거래대금 상위`;
+  let h=`<div class="sec-hd">${title} <span class="pill">${lst.length}개</span></div>`;
   lst.forEach((s,i)=>{
     const sec=gS(s.name,s)||'기타',sc2=SC[sec]||'#888';
     const cc=s.change>0?'up':s.change<0?'dn':'fl';
     const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';
-    h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt}</div></div><div class="vr"><div class="vc ${cc}">${cs}</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
+    const bg=getSectorColor(sec);
+    const isUp=s.change>0;
+    const limitStr=s.isLimit?(s.limitHour?`<span class="vcard-lim">상한가 ${s.limitHour.slice(0,2)}:${s.limitHour.slice(2,4)}</span>`:'<span class="vcard-lim">🔴상한가</span>'):'';
+    h+=`<div class="vcard" style="background:${bg};color:#fff;border-color:${bg}" onclick="showStock('${s.code}')">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span class="vn" style="color:#fff">${s.name}</span>
+          <span class="vtag">${sec}</span>${limitStr}
+        </div>
+        <div style="font-size:11px;opacity:.8;margin-top:2px">${s.price.toLocaleString()}원</div>
+      </div>
+      <div style="text-align:right">
+        <div class="vpct">+${s.change.toFixed(2)}%</div>
+        <div class="vamt">${s.amtFmt||''}</div>
+      </div>
+    </div>`;
   });
-  h+=`<div class="foot">코스피+코스닥 거래대금 내림차순</div>`;
+  if(lst.length===0)h+=`<div class="empty-msg">4%이상 상승 거래대금 종목이 없습니다</div>`;
+  h+=`<div class="foot">거래대금 내림차순 · ${lst4.length>=3?'4%이상 상승':'전체'}</div>`;
   document.getElementById('tv').innerHTML=h;
 }
 
