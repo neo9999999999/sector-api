@@ -17,11 +17,11 @@ module.exports=async(req,res)=>{
     // 거래대금 순위 (코스피 J + 코스닥 Q)
     const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
     const volJ=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000"},tk);
-    await w(300);
+    await w(600);
     let volKQarr=[];
     try{
       // 코스닥: 마켓코드 "Q", ISCD "1000"
-      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"0000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
       volKQarr=r.output||[];
     }catch(e){}
     await w(300);
@@ -37,9 +37,9 @@ module.exports=async(req,res)=>{
       const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000"},tk);
       gainJ=parseS(r.output,"J");
     }catch(e){gainErr+="J:"+e.message.slice(0,60)+" ";}
-    await w(300);
+    await w(600);
     try{
-      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"0000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
       gainQ=parseS(r.output,"Q");
     }catch(e){gainErr+="Q:"+e.message.slice(0,60);}
 
