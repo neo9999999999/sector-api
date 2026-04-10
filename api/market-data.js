@@ -21,7 +21,7 @@ module.exports=async(req,res)=>{
     let volKQarr=[];
     try{
       // 코스닥: 마켓코드 "Q", ISCD "1000"
-      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"1000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"0000"},tk);
       volKQarr=r.output||[];
     }catch(e){}
     await w(300);
@@ -31,7 +31,7 @@ module.exports=async(req,res)=>{
     parseS(volKQarr,"Q").forEach(s=>{if(!seenVol.has(s.code)){volAll.push(s);seenVol.add(s.code);}});
 
     // 등락률 순위 (chgrate-rank, 거래대금 무관)
-    const gp={FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"30",FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+    const gp={FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
     let gainJ=[],gainQ=[],gainErr="";
     try{
       const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000"},tk);
@@ -39,13 +39,13 @@ module.exports=async(req,res)=>{
     }catch(e){gainErr+="J:"+e.message.slice(0,60)+" ";}
     await w(300);
     try{
-      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"1000"},tk);
+      const r=await get("/uapi/domestic-stock/v1/quotations/chgrate-rank","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"0000"},tk);
       gainQ=parseS(r.output,"Q");
     }catch(e){gainErr+="Q:"+e.message.slice(0,60);}
 
     // gainRanking: chgrate API 성공시 사용, 실패시 volAll 기반 fallback
     let gainRanking=[];
-    if(gainJ.length||gainQ.length){
+    if(gainJ.length||gainQ.length){  // API 성공
       const gainAll=[...gainJ];
       const seenG=new Set(gainJ.map(s=>s.code));
       gainQ.forEach(s=>{if(!seenG.has(s.code)){gainAll.push(s);seenG.add(s.code);}});
