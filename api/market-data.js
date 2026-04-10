@@ -1,10 +1,9 @@
 const https=require("https");
 function post(p,b){return new Promise((y,n)=>{const d=JSON.stringify(b);const r=https.request({hostname:"openapi.koreainvestment.com",port:9443,path:p,method:"POST",headers:{"Content-Type":"application/json","Content-Length":Buffer.byteLength(d)}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{try{y(JSON.parse(t))}catch{n(new Error(t.slice(0,200)))}})});r.on("error",n);r.write(d);r.end()})}
-function get(p,id,q,tk){return new Promise((y,n)=>{const qs=new URLSearchParams(q).toString();const r=https.request({hostname:"openapi.koreainvestment.com",port:9443,path:p+"?"+qs,method:"GET",headers:{"Content-Type":"application/json; charset=utf-8",authorization:"Bearer "+tk,appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET,tr_id:id,custtype:"P"}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{const sc=s.statusCode;if(!t)return n(new Error(id+":H"+sc+":empty"));try{y(JSON.parse(t))}catch{n(new Error(id+":H"+sc+":"+t.slice(0,200)))}})});r.on("error",e=>n(new Error(id+":"+e.message)));r.end()})}
+function get(p,id,q,tk,cont=""){return new Promise((y,n)=>{const qs=new URLSearchParams(q).toString();const r=https.request({hostname:"openapi.koreainvestment.com",port:9443,path:p+"?"+qs,method:"GET",headers:{"Content-Type":"application/json; charset=utf-8",authorization:"Bearer "+tk,appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET,tr_id:id,tr_cont:cont,custtype:"P"}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{const sc=s.statusCode;if(!t)return n(new Error(id+":H"+sc+":empty"));try{const parsed=JSON.parse(t);parsed._cont=s.headers['tr_cont']||'';y(parsed);}catch{n(new Error(id+":H"+sc+":"+t.slice(0,200)))}})});r.on("error",e=>n(new Error(id+":"+e.message)));r.end()})}
 function w(ms){return new Promise(r=>setTimeout(r,ms))}
 function fmt(n){if(!n)return"";if(n>=1e12)return(n/1e12).toFixed(1)+"조";if(n>=1e8)return Math.round(n/1e8)+"억";if(n>=1e4)return Math.round(n/1e4)+"만";return n.toLocaleString()}
 
-const {saveDaily,getKSTDate,getKSTHour}=require("./save-daily");
 let _cache={token:"",exp:0};
 async function getToken(){
   const now=Date.now();
@@ -16,7 +15,8 @@ async function getToken(){
 }
 
 const ETF=/^(KODEX|TIGER|KBSTAR|ARIRANG|KOSEF|HANARO|PLUS|RISE|ACE|SOL|WON|TIMEFOLIO|SMART)/;
-function parseRank(arr,mkt){
+
+function parseItems(arr,mkt){
   return(arr||[]).filter(i=>i&&i.hts_kor_isnm&&!ETF.test(i.hts_kor_isnm)).map(i=>({
     name:i.hts_kor_isnm,
     code:i.mksc_shrn_iscd||i.stck_shrn_iscd,
@@ -27,9 +27,29 @@ function parseRank(arr,mkt){
     vol:+(i.acml_vol||0),
     isLimit:+i.prdy_ctrt>=29,
     limitHour:i.hgpr_hour||"",
-    market:mkt,
-    _rawAmt:+(i.acml_tr_pbmn||0)
+    market:mkt
   }))
+}
+
+// tr_cont 연속 조회로 최대 maxPage*30개 가져오기
+async function getAll(path, trId, params, tk, maxPage=3){
+  const all=[];
+  const seen=new Set();
+  let cont="";
+  for(let i=0;i<maxPage;i++){
+    try{
+      const r=await get(path,trId,params,tk,cont);
+      const items=r.output||[];
+      items.forEach(s=>{
+        const code=s.mksc_shrn_iscd||s.stck_shrn_iscd;
+        if(!seen.has(code)){seen.add(code);all.push(s);}
+      });
+      cont=r._cont;
+      if(cont!=="N"&&cont!=="n")break; // 더 이상 데이터 없음
+      if(i<maxPage-1)await w(400);
+    }catch(e){break;}
+  }
+  return all;
 }
 
 module.exports=async(req,res)=>{
@@ -40,116 +60,51 @@ module.exports=async(req,res)=>{
     let tk;
     try{tk=await getToken();}catch(e){return res.status(500).json({ok:false,error:"token",d:e.message});}
 
-    // ① 거래대금 순위 (코스피+코스닥 통합)
-    const vp={
-      FID_COND_SCR_DIV_CODE:"20171",FID_INPUT_ISCD:"0000",
-      FID_COND_MRKT_DIV_CODE:"J",FID_DIV_CLS_CODE:"0",
-      FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
-      FID_TRGT_EXLS_CLS_CODE:"0000000000",FID_INPUT_PRICE_1:"0",
-      FID_INPUT_PRICE_2:"1000000",FID_VOL_CNT:"100000",FID_INPUT_DATE_1:""
-    };
-    const volRes=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",vp,tk);
-    const volAll=parseRank(volRes.output,"J");
-    await w(700);
+    // ① 거래대금 순위 — 연속조회 최대 60개
+    const vp={FID_COND_SCR_DIV_CODE:"20171",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
+              FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",
+              FID_TRGT_EXLS_CLS_CODE:"0000000000",FID_INPUT_PRICE_1:"0",
+              FID_INPUT_PRICE_2:"1000000",FID_VOL_CNT:"100000",FID_INPUT_DATE_1:""};
+    const volRaw=await getAll("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",vp,tk,2);
+    const volAll=parseItems(volRaw,"J");
+    await w(600);
 
-    // ② 등락률 순위 — 코스피(J) + 코스닥(Q) 공식 파라미터 사용
-    // 공식 예제: FID_COND_SCR_DIV_CODE="20170", FID_RANK_SORT_CLS_CODE="0000"
-    const gp={
-      FID_COND_SCR_DIV_CODE:"20170",    // 공식: 20170 (기존에 20171로 잘못 씀)
-      FID_INPUT_ISCD:"0000",
-      FID_RANK_SORT_CLS_CODE:"0",    // 공식: 0000 (기존에 "1" 사용)
-      FID_INPUT_CNT_1:"0",
-      FID_PRC_CLS_CODE:"0",
-      FID_INPUT_PRICE_1:"0",            // 공식: "0"
-      FID_INPUT_PRICE_2:"1000000",      // 공식: "1000000"
-      FID_VOL_CNT:"100000",             // 공식: "100000"
-      FID_TRGT_CLS_CODE:"0",
-      FID_TRGT_EXLS_CLS_CODE:"0",
-      FID_DIV_CLS_CODE:"0",
-      FID_RSFL_RATE1:"0",
-      FID_RSFL_RATE2:""
-    };
-
-    let gainJ=[],gainQ=[],gainErr="";
-
-    // 코스피 등락률
+    // ② 등락률 순위 — 연속조회 최대 90개
+    const gp={FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_ISCD:"0000",FID_COND_MRKT_DIV_CODE:"J",
+              FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",
+              FID_INPUT_PRICE_1:"0",FID_INPUT_PRICE_2:"1000000",FID_VOL_CNT:"100000",
+              FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",
+              FID_RSFL_RATE1:"0",FID_RSFL_RATE2:""};
+    let gainRaw=[],gainApiOk=false,gainErr="";
     try{
-      const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",
-        {...gp,FID_COND_MRKT_DIV_CODE:"J"},tk);
-      if(r.output?.length) gainJ=parseRank(r.output,"J");
-      else gainErr+="J:rt"+r.rt_cd+":"+r.msg1;
-    }catch(e){gainErr+="J:"+e.message.slice(0,60);}
-    await w(700);
+      gainRaw=await getAll("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,tk,3);
+      gainApiOk=gainRaw.length>0;
+    }catch(e){gainErr=e.message.slice(0,80);}
 
-    // 코스닥 등락률 (공식 문서 확인: "Q" 지원)
-    try{
-      const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",
-        {...gp,FID_COND_MRKT_DIV_CODE:"Q"},tk);
-      if(r.output?.length) gainQ=parseRank(r.output,"Q");
-      else gainErr+=" Q:rt"+r.rt_cd+":"+r.msg1;
-    }catch(e){gainErr+=" Q:"+e.message.slice(0,60);}
-
-    // 코스피+코스닥 합산 → 등락률 내림차순
-    const seen=new Set();
-    const gainAll=[...gainJ,...gainQ].filter(s=>{
-      if(seen.has(s.code))return false;
-      seen.add(s.code);return true;
-    });
-    const gainRanking=gainAll.filter(s=>s.change>0)
-      .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
-    const gainApiOk=gainJ.length>0||gainQ.length>0;
-
-    // gainRanking 종목에 거래대금 데이터 매핑 (volAll에서)
+    // 거래대금 맵 (등락률 종목에 거래대금 보완)
     const volMap=new Map(volAll.map(s=>[s.code,{amt:s.amt,amtFmt:s.amtFmt}]));
+
+    let gainRanking=gainRaw.length>0
+      ? parseItems(gainRaw,"J").filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change)
+      : [...volAll].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
+
+    // 거래대금 보완 (volMap에 있으면 정확한 값, 없으면 vol*price)
     gainRanking.forEach(s=>{
       const v=volMap.get(s.code);
       if(v&&v.amt>0){s.amt=v.amt;s.amtFmt=v.amtFmt;}
-      else if(!s.amt&&s.vol&&s.price){
-        s.amt=s.vol*s.price;
-        s.amtFmt=fmt(s.amt);
-      }
     });
 
-    // fallback
-    if(!gainApiOk){
-      gainRanking.push(...[...volAll].filter(s=>s.change>0)
-        .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change));
-    }
-
-    // 장마감 후(15:30~16:30 KST) 자동 저장
-    const kstHour=getKSTHour();
-    if(kstHour>=1530&&kstHour<=1630&&process.env.GITHUB_TOKEN){
-      const today=getKSTDate();
-      const payload={
-        date:today,
-        topSectors:Object.entries(
-          gainRanking.slice(0,30).reduce((acc,s)=>{
-            const sec=s.sectorFromApi||"기타";
-            if(!acc[sec])acc[sec]=[];
-            acc[sec].push({name:s.name,code:s.code,change:s.change,amt:s.amt,isLimit:s.isLimit});
-            return acc;
-          },{})
-        ).map(([sector,stocks])=>({
-          sector,
-          stocks:stocks.sort((a,b)=>b.change-a.change),
-          avg:+(stocks.reduce((t,s)=>t+s.change,0)/stocks.length).toFixed(2),
-          leader:stocks[0]?.name||""
-        })).sort((a,b)=>b.avg-a.avg).slice(0,8),
-        gainTop30:gainRanking.slice(0,30).map(s=>({name:s.name,code:s.code,change:s.change,market:s.market,isLimit:s.isLimit,amt:s.amt})),
-        volTop30:([...volAll].sort((a,b)=>b.amt-a.amt)).slice(0,30).map(s=>({name:s.name,code:s.code,change:s.change,amt:s.amt}))
-      };
-      saveDaily(today,payload).catch(()=>{});
-    }
+    const rising=[...volAll].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
 
     res.status(200).json({
       ok:true,_token:tk,
       date:new Date().toLocaleDateString("ko-KR",{timeZone:"Asia/Seoul"}),
       topVolume:[...volAll].sort((a,b)=>b.amt-a.amt),
-      topRising:[...volAll].filter(s=>s.change>0).sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change),
+      topRising:rising,
       gainRanking,
       limitUp:gainRanking.filter(s=>s.isLimit),
       total:volAll.length,
-      debug:{kospi:volAll.length,gainJ:gainJ.length,gainQ:gainQ.length,gainApiOk,gainErr:gainErr||null}
+      debug:{volTotal:volAll.length,gainTotal:gainRanking.length,gainApiOk,gainErr:gainErr||null}
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
