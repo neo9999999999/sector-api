@@ -3,6 +3,15 @@ function post(p,b){return new Promise((y,n)=>{const d=JSON.stringify(b);const r=
 function get(p,id,q,tk){return new Promise((y,n)=>{const qs=new URLSearchParams(q).toString();const r=https.request({hostname:"openapi.koreainvestment.com",port:9443,path:p+"?"+qs,method:"GET",headers:{"Content-Type":"application/json; charset=utf-8",authorization:"Bearer "+tk,appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET,tr_id:id,custtype:"P"}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{const sc=s.statusCode;if(!t)return n(new Error(id+":H"+sc+":empty"));try{y(JSON.parse(t))}catch{n(new Error(id+":H"+sc+":"+t.slice(0,200)))}})});r.on("error",e=>n(new Error(id+":"+e.message)));r.end()})}
 function w(ms){return new Promise(r=>setTimeout(r,ms))}
 function fmt(n){if(!n)return"0";if(n>=1e12)return(n/1e12).toFixed(1)+"조";if(n>=1e8)return Math.round(n/1e8)+"억";return n.toLocaleString()}
+let _tokenCache={token:'',exp:0};
+async function getToken(){
+  const now=Date.now();
+  if(_tokenCache.token&&_tokenCache.exp>now+60000)return _tokenCache.token;
+  const td=await post("/oauth2/tokenP",{grant_type:"client_credentials",appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET});
+  if(!td.access_token)throw new Error("token:"+JSON.stringify(td).slice(0,100));
+  _tokenCache={token:td.access_token,exp:now+(td.expires_in||86400)*1000};
+  return td.access_token;
+}
 function parseS(arr,mkt=""){return(arr||[]).filter(i=>i&&i.hts_kor_isnm).map(i=>({name:i.hts_kor_isnm,code:i.mksc_shrn_iscd||i.stck_shrn_iscd,price:+i.stck_prpr,change:+i.prdy_ctrt,amt:+(i.acml_tr_pbmn||0),amtFmt:fmt(+(i.acml_tr_pbmn||0)),vol:+(i.acml_vol||0),isLimit:+i.prdy_ctrt>=29,market:mkt}))}
 
 module.exports=async(req,res)=>{
@@ -10,9 +19,8 @@ module.exports=async(req,res)=>{
   res.setHeader("Cache-Control","no-store");
   if(req.method==="OPTIONS")return res.status(200).end();
   try{
-    const td=await post("/oauth2/tokenP",{grant_type:"client_credentials",appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET});
-    if(!td.access_token)return res.status(500).json({ok:false,error:"token",d:td});
-    const tk=td.access_token;
+    let tk;
+    try{tk=await getToken();}catch(e){return res.status(500).json({ok:false,error:"token",d:e.message});}
 
     // 거래대금 순위 (코스피 J + 코스닥 Q)
     const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
