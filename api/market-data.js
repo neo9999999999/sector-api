@@ -15,8 +15,9 @@ async function getToken(){
   return td.access_token;
 }
 
+const ETF=/^(KODEX|TIGER|KBSTAR|ARIRANG|KOSEF|HANARO|PLUS|RISE|ACE|SOL|WON|TIMEFOLIO|SMART)/;
 function parseRank(arr,mkt){
-  return(arr||[]).filter(i=>i&&i.hts_kor_isnm).map(i=>({
+  return(arr||[]).filter(i=>i&&i.hts_kor_isnm&&!ETF.test(i.hts_kor_isnm)).map(i=>({
     name:i.hts_kor_isnm,
     code:i.mksc_shrn_iscd||i.stck_shrn_iscd,
     price:+i.stck_prpr,
