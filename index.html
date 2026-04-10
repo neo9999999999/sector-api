@@ -274,7 +274,7 @@ async function load(){
     const d=await res.json();
     if(!d.ok)throw new Error(d.error||'API오류');
     const seen=new Set();allS=[];
-    for(const s of[...(d.limitUp||[]),...(d.topRising||[]),...(d.topVolume||[])]){if(!seen.has(s.code)){seen.add(s.code);allS.push(s);}}
+    for(const s of[...(d.gainRanking||[]),...(d.limitUp||[]),...(d.topRising||[]),...(d.topVolume||[])]){if(!seen.has(s.code)){seen.add(s.code);allS.push(s);}}
     secMap={};
     for(const s of allS){const sec=gS(s.name);if(sec){if(!secMap[sec])secMap[sec]=[];secMap[sec].push(s);}}
     const now=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
@@ -351,22 +351,9 @@ function rV(d){
     const sec=gS(s.name,s)||'기타',sc2=SC[sec]||'#888';
     const cc=s.change>0?'up':s.change<0?'dn':'fl';
     const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';
-    const bg=getSectorColor(sec);
-    const isUp=s.change>0;
-    const limitStr=s.isLimit?(s.limitHour?`<span class="vcard-lim">상한가 ${s.limitHour.slice(0,2)}:${s.limitHour.slice(2,4)}</span>`:'<span class="vcard-lim">🔴상한가</span>'):'';
-    h+=`<div class="vcard" style="background:${bg};color:#fff;border-color:${bg}" onclick="showStock('${s.code}')">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:5px">
-          <span class="vn" style="color:#fff">${s.name}</span>
-          <span class="vtag">${sec}</span>${limitStr}
-        </div>
-        <div style="font-size:11px;opacity:.8;margin-top:2px">${s.price.toLocaleString()}원</div>
-      </div>
-      <div style="text-align:right">
-        <div class="vpct">+${s.change.toFixed(2)}%</div>
-        <div class="vamt">${s.amtFmt||''}</div>
-      </div>
-    </div>`;
+    const cc=s.change>0?'up':s.change<0?'dn':'fl';
+    const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';
+    h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt||''}</div></div><div class="vr"><div class="vc ${cc}">${cs}</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
   });
   if(lst.length===0)h+=`<div class="empty-msg">4%이상 상승 거래대금 종목이 없습니다</div>`;
   h+=`<div class="foot">거래대금 내림차순 · ${lst4.length>=3?'4%이상 상승':'전체'}</div>`;
