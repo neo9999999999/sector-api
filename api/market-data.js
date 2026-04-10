@@ -65,7 +65,7 @@ module.exports=async(req,res)=>{
       gainRanking,
       limitUp:volAll.filter(s=>s.isLimit),
       total:volAll.length,
-      debug:{kospi:(volJ.output||[]).length,kosdaq:volKQarr.length,gainJ:gainJ.length,gainQ:gainQ.length,gainErr:gainErr||null}
+      debug:{kospi:(volJ.output||[]).length,kosdaq:volKQarr.length,gainJ:gainJ.length,gainQ:gainQ.length,gainErr:gainErr||null,kqMeta:volKQMeta||null,kqErr:volKQErr||null}
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
