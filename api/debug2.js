@@ -11,11 +11,9 @@ module.exports=async(req,res)=>{
     if(!td.access_token)return res.json({ok:false,error:"token"});
     const tk=td.access_token;
 
-    // 공식 예제 파라미터로 J, Q, W 세가지 모두 테스트
     const base={
       FID_COND_SCR_DIV_CODE:"20170",
       FID_INPUT_ISCD:"0000",
-      FID_RANK_SORT_CLS_CODE:"0000",
       FID_INPUT_CNT_1:"0",
       FID_PRC_CLS_CODE:"0",
       FID_INPUT_PRICE_1:"0",
@@ -29,13 +27,14 @@ module.exports=async(req,res)=>{
     };
 
     const results=[];
-    for(const mkt of ["J","Q","W"]){
+    // FID_RANK_SORT_CLS_CODE: "0"=? "1"=? 확인 + J마켓
+    for(const sort of ["0","1"]) {
       try{
         const r=await get("/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",
-          {...base,FID_COND_MRKT_DIV_CODE:mkt},tk);
+          {...base,FID_COND_MRKT_DIV_CODE:"J",FID_RANK_SORT_CLS_CODE:sort},tk);
         const top3=(r.output||[]).slice(0,3).map(i=>i.hts_kor_isnm+' '+i.prdy_ctrt+'%');
-        results.push({mkt,rt_cd:r.rt_cd,msg:r.msg1?.trim(),outLen:(r.output||[]).length,top3});
-      }catch(e){results.push({mkt,err:e.message.slice(0,80)});}
+        results.push({sort,mkt:"J",rt_cd:r.rt_cd,msg:r.msg1?.trim(),outLen:(r.output||[]).length,top3});
+      }catch(e){results.push({sort,mkt:"J",err:e.message.slice(0,80)});}
       await w(500);
     }
     res.json({ok:true,results});
