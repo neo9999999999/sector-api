@@ -266,7 +266,7 @@ const SC={
   'AI헬스케어':'#4CAF50',
 };
 
-function gS(n){if(SM[n])return SM[n];for(const[k,v]of Object.entries(SM))if(n.includes(k)||k.includes(n))return v;return null}
+function gS(n,s){if(s?.sectorFromApi)return s.sectorFromApi;if(SM[n])return SM[n];for(const[k,v]of Object.entries(SM))if(n.includes(k)||k.includes(n))return v;return null}
 function mo(ss){const li=ss.some(x=>x.isLimit)?30:0;const avg=ss.reduce((t,x)=>t+x.change,0)/ss.length;const mx=Math.max(...ss.map(x=>x.amt||0));return Math.round(Math.min(Math.min(avg*4,40)+Math.min(mx/5e11,1)*30+li,100))}
 function mL(n){return n>=80?"매우강함":n>=60?"강함":n>=40?"보통":"약함"}
 function mC(n){return n>=80?"#E53935":n>=60?"#FF7043":n>=40?"#FF9800":"#aaa"}
@@ -337,7 +337,7 @@ function rS(d){
   document.getElementById('ts').innerHTML=h;
 }
 
-function qB(s){return ''} // 시장구분은 API 미지원
+function qB(s){return s.market==='Q'?'<span class="qbadge">Q</span>':''}
 function sRow(s,rk){const cc=s.change>0?'up':s.change<0?'dn':'fl';const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';return `<div class="srow" onclick="showStock('${s.code}')"><span class="srk">${rk}</span><span class="sn">${s.name}${qB(s)}</span><div class="sr"><div class="sp">${s.price.toLocaleString()}원</div><div class="sc ${cc}">${cs}</div>${s.amtFmt?`<div class="sa">${s.amtFmt}</div>`:''}</div></div>`;}
 
 /* ─── 거래대금 탭 ─── */
@@ -345,7 +345,7 @@ function rV(d){
   const lst=(d.topVolume||[]).slice(0,40);
   let h=`<div class="sec-hd">거래대금 상위 <span class="pill">${lst.length}개</span></div>`;
   lst.forEach((s,i)=>{
-    const sec=gS(s.name)||'기타',sc2=SC[sec]||'#ccc';
+    const sec=gS(s.name,s)||'기타',sc2=SC[sec]||'#888';
     const cc=s.change>0?'up':s.change<0?'dn':'fl';
     const cs=(s.change>0?'+':'')+s.change.toFixed(2)+'%';
     h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt}</div></div><div class="vr"><div class="vc ${cc}">${cs}</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
@@ -373,7 +373,7 @@ function rR(d){
     h+=`<div class="empty"><div style="font-size:28px;margin-bottom:10px">📉</div><div style="font-weight:700;color:#555">상승 종목 없음</div></div>`;
   }else{
     lst.slice(0,100).forEach((s,i)=>{
-      const sec=gS(s.name)||'기타',sc2=SC[sec]||'#ccc';
+      const sec=gS(s.name,s)||'기타',sc2=SC[sec]||'#888';
       h+=`<div class="vrow" onclick="showStock('${s.code}')"><div class="vrk">${i+1}</div><div class="vi"><div class="vn">${s.name}${s.isLimit?' 🔴':''}${qB(s)}</div><div class="vsec" style="color:${sc2}">● ${sec}</div><div class="va">${s.amtFmt||''}</div></div><div class="vr"><div class="vc up">+${s.change.toFixed(2)}%</div><div class="vp">${s.price.toLocaleString()}원</div></div></div>`;
     });
   }
