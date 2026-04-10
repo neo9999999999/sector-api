@@ -26,12 +26,12 @@ module.exports=async(req,res)=>{
     const vp={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
     const volJ=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:"0000"},tk);
     await w(600);
-    let volKQarr=[];
+    let volKQarr=[],volKQErr="",volKQMeta="";
     try{
       // 코스닥: 마켓코드 "Q", ISCD "1000"
       const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"Q",FID_INPUT_ISCD:"Q000"},tk);
-      volKQarr=r.output||[];
-    }catch(e){}
+      volKQarr=r.output||[];volKQMeta=JSON.stringify({rt_cd:r.rt_cd,msg1:r.msg1,len:(r.output||[]).length});
+    }catch(e){volKQErr=e.message.slice(0,80);}
     await w(300);
 
     const volAll=parseS(volJ.output,"J");
