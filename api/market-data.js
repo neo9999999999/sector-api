@@ -98,6 +98,13 @@ module.exports=async(req,res)=>{
       .sort((a,b)=>b.isLimit-a.isLimit||b.change-a.change);
     const gainApiOk=gainJ.length>0||gainQ.length>0;
 
+    // gainRanking 종목에 거래대금 데이터 매핑 (volAll에서)
+    const volMap=new Map(volAll.map(s=>[s.code,{amt:s.amt,amtFmt:s.amtFmt}]));
+    gainRanking.forEach(s=>{
+      const v=volMap.get(s.code);
+      if(v){s.amt=v.amt;s.amtFmt=v.amtFmt;}
+    });
+
     // fallback
     if(!gainApiOk){
       gainRanking.push(...[...volAll].filter(s=>s.change>0)
