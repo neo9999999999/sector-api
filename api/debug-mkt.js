@@ -10,15 +10,19 @@ module.exports=async(req,res)=>{
     const td=await post("/oauth2/tokenP",{grant_type:"client_credentials",appkey:process.env.KIS_APP_KEY,appsecret:process.env.KIS_APP_SECRET});
     if(!td.access_token)return res.json({ok:false,error:"token"});
     const tk=td.access_token;
+    
+    // 종목 기본정보 조회 — 코스닥(247540 에코프로비엠), 코스피(005930 삼성전자) 비교
+    const codes=["005930","247540","086520","035720"];
     const results=[];
-    const base={FID_COND_SCR_DIV_CODE:"20174",FID_INPUT_ISCD:"0000",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
-    // KOSDAQ 마켓코드 후보들 테스트
-    for(const mkt of ["Q","NQ","KQ","K","D","QQ"]){
+    for(const code of codes){
       try{
-        const r=await get("/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...base,FID_COND_MRKT_DIV_CODE:mkt},tk);
-        results.push({mkt,status:r._status,rt_cd:r.rt_cd,msg:r.msg1,outLen:(r.output||[]).length,first:r.output?.[0]?.hts_kor_isnm});
-      }catch(e){results.push({mkt,err:e.message.slice(0,60)});}
-      await w(300);
+        // search-stock-info
+        const r=await get("/uapi/domestic-stock/v1/quotations/search-stock-info","CTPF1002R",{PRDT_TYPE_CD:"300",PDNO:code},tk);
+        results.push({code,method:"search-stock-info",rt_cd:r.rt_cd,msg:r.msg1,
+          mktDivCode:r.output?.mkt_id,mktName:r.output?.mket_name,
+          stockName:r.output?.prdt_name});
+      }catch(e){results.push({code,method:"search-stock-info",err:e.message.slice(0,60)});}
+      await w(200);
     }
     res.json({ok:true,results});
   }catch(e){res.json({ok:false,error:e.message})}
