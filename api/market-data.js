@@ -89,9 +89,9 @@ function parseGainRank(arr){
 async function enrichStocks(stocks,tk){
   // 코드 기반 1차 추정: 6자리 숫자 코드에서 첫 번째 자리로는 구분 불가
   // 대신 stock-info API 병렬 호출 (최대 15개, 딜레이 포함)
-  const targets=stocks.slice(0,15);
+  const targets=stocks.slice(0,10);
   for(let i=0;i<targets.length;i++){
-    if(i>0)await w(120); // rate limit 방지
+    if(i>0)await w(200); // rate limit 방지
     const info=await getStockInfo(targets[i].code,tk);
     if(info){
       targets[i].market=info.market;
