@@ -48,11 +48,11 @@ module.exports=async function(req,res){
   try{
     var tk=await tok();
     var vp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20171",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
-    var gp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20170",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:"",FID_INPUT_CNT_1:"",FID_PRC_CLS_CODE:"0",FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
+    var gp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20170",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:"",FID_INPUT_CNT_1:"",FID_PRC_CLS_CODE:"0"};
     var v=await pages(tk,"/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",Object.assign({},vp,{FID_COND_MRKT_DIV_CODE:"J"}),7);
     var g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",Object.assign({},gp,{FID_COND_MRKT_DIV_CODE:"J"}),3);
     var seen={},all=[];
-    v.items.concat(g.items).forEach(function(s){if(!s.code||seen[s.code])return;seen[s.code]=1;if(s.change>=10&&s.change<29&&s.amt>=50)all.push(s)});
+    v.items.concat(g.items).forEach(function(s){if(!s.code||seen[s.code])return;seen[s.code]=1;if(s.change>=10&&s.change<29&&s.amt>=50&&s.price>=1000)all.push(s)});
     for(var i=0;i<Math.min(all.length,20);i++){
       await w(200);
       try{
@@ -72,3 +72,5 @@ module.exports=async function(req,res){
       all:scored,
       debug:{vol:v.items.length,gain:g.items.length,kosdaq:scored.filter(function(s){return s.market==="KOSDAQ"}).length,filtered:all.length,errors:v.errs.concat(g.errs)}
     });
+  }catch(e){res.status(500).json({ok:false,error:e.message})}
+};
