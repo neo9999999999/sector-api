@@ -3,9 +3,9 @@ const AK=process.env.KIS_APP_KEY||"PSl3mhWiWrra8foZgmNLG0VgjgKGERoJtOWn";
 const AS=process.env.KIS_APP_SECRET||"IoZNaCqHEJ2mRLwqVQg0nshJ+kiQuRfm4WWeK9umumXCiptxKY6jSEywAaYlGqHDEpX8zG7I12VG4pSZChBiOWm2dmKi34OTZvdy+5DZrgUNZINevoYh+S06WkuyZAw/phJ8cibnZnQ8XkD9fznIQWsEADLJEaXz60KHEZfiXYqNVySqqFI=";
 const H="openapi.koreainvestment.com",P=9443;
 let _tk=null,_te=0;
-function rq(m,p,h,b){return new Promise((y,n)=>{const r=https.request({hostname:H,port:P,path:p,method:m,headers:{...h,"Content-Type":"application/json"}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{try{y(JSON.parse(t))}catch{n(new Error(t.slice(0,200)))}})});r.on("error",n);if(b)r.write(JSON.stringify(b));r.end()})}
-async function tok(){if(_tk&&Date.now()<_te)return _tk;const r=await rq("POST","/oauth2/tokenP",{},{grant_type:"client_credentials",appkey:AK,appsecret:AS});if(!r.access_token)throw new Error("Tok:"+JSON.stringify(r).slice(0,200));_tk=r.access_token;_te=Date.now()+86300000;return _tk}
-function w(ms){return new Promise(r=>setTimeout(r,ms))}
+function rq(m,p,h,b){return new Promise(function(y,n){var r=https.request({hostname:H,port:P,path:p,method:m,headers:Object.assign({},h,{"Content-Type":"application/json"})},function(s){var t="";s.on("data",function(c){t+=c});s.on("end",function(){try{y(JSON.parse(t))}catch(e){n(new Error(t.slice(0,200)))}})});r.on("error",n);if(b)r.write(JSON.stringify(b));r.end()})}
+async function tok(){if(_tk&&Date.now()<_te)return _tk;var r=await rq("POST","/oauth2/tokenP",{},{grant_type:"client_credentials",appkey:AK,appsecret:AS});if(!r.access_token)throw new Error("Tok:"+JSON.stringify(r).slice(0,200));_tk=r.access_token;_te=Date.now()+86300000;return _tk}
+function w(ms){return new Promise(function(r){setTimeout(r,ms)})}
 function ps(s){var c=s.mksc_shrn_iscd||s.stck_shrn_iscd||"";var c0=c.charAt(0);return{code:c,name:s.hts_kor_isnm||"",price:+s.stck_prpr||0,change:+(s.prdy_ctrt||0),vol:+s.acml_vol||0,amt:Math.round((+s.acml_tr_pbmn||0)/1e8),open:+s.stck_oprc||0,high:+s.stck_hgpr||0,low:+s.stck_lwpr||0,market:(c0==="3"||c0==="4"||c0==="9")?"KOSDAQ":"KOSPI"}}
 async function pages(tk,path,trId,params,n){
   var all=[],errs=[];
@@ -17,7 +17,7 @@ async function pages(tk,path,trId,params,n){
       if(r.rt_cd!=="0"){errs.push(r.msg1||r.msg_cd);break}
       var items=(r.output||[]).map(ps);
       if(!items.length)break;
-      all.push.apply(all,items);await w(250);
+      all=all.concat(items);await w(250);
     }catch(e){errs.push(e.message);break}
   }
   return{items:all,errs:errs};
@@ -31,7 +31,7 @@ function score(s){
   if(s.amt>0&&s.amt<200)sc+=2;else if(s.amt<500)sc+=1;else if(s.amt>=1500)sc-=1;
   if(s.change>=25)sc+=2;else if(s.change>=20)sc+=1;
   if(s.market==="KOSDAQ")sc+=1;
-  var etf=["KODEX","TIGER","RISE","ACE","SOL","KIWOOM","KOSEF","HANARO","ETN"].some(function(k){return(s.name||"").includes(k)});
+  var etf=["KODEX","TIGER","RISE","ACE","SOL","KIWOOM","KOSEF","HANARO","ETN"].some(function(k){return(s.name||"").indexOf(k)>=0});
   if(etf)sc-=3;
   if(s.change>0&&s.change<=13)sc+=2;
   if(s.change>=15)sc-=1;
@@ -48,9 +48,9 @@ module.exports=async function(req,res){
   try{
     var tk=await tok();
     var vp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20171",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
-    var gp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20170",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:"",FID_INPUT_CNT_1:"",FID_PRC_CLS_CODE:"0"};
+    var gp={FID_COND_MRKT_DIV_CODE:"J",FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_INPUT_CNT_1:"0",FID_PRC_CLS_CODE:"0",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_TRGT_CLS_CODE:"0",FID_TRGT_EXLS_CLS_CODE:"0",FID_DIV_CLS_CODE:"0",FID_RSFL_RATE1:"",FID_RSFL_RATE2:""};
     var v=await pages(tk,"/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",Object.assign({},vp,{FID_COND_MRKT_DIV_CODE:"J"}),7);
-    var g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",Object.assign({},gp,{FID_COND_MRKT_DIV_CODE:"J"}),3);
+    var g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,3);
     var seen={},all=[];
     v.items.concat(g.items).forEach(function(s){if(!s.code||seen[s.code])return;seen[s.code]=1;if(s.change>=10&&s.change<29&&s.amt>=50&&s.price>=1000)all.push(s)});
     for(var i=0;i<Math.min(all.length,20);i++){
@@ -64,9 +64,7 @@ module.exports=async function(req,res){
     scored.sort(function(a,b){return b.score-a.score});
     var kst=new Date(Date.now()+9*3600000);
     res.status(200).json({
-      ok:true,
-      date:kst.toISOString().slice(0,10),
-      time:kst.toISOString().slice(11,16),
+      ok:true,date:kst.toISOString().slice(0,10),time:kst.toISOString().slice(11,16),
       summary:{total:scored.length,S:scored.filter(function(s){return s.grade==="S"}).length,A:scored.filter(function(s){return s.grade==="A"}).length,B:scored.filter(function(s){return s.grade==="B"}).length,X:scored.filter(function(s){return s.grade==="X"}).length},
       signals:{S:scored.filter(function(s){return s.grade==="S"}),A:scored.filter(function(s){return s.grade==="A"}),B:scored.filter(function(s){return s.grade==="B"}),X:scored.filter(function(s){return s.grade==="X"})},
       all:scored,
