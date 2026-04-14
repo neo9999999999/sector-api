@@ -45,6 +45,73 @@ module.exports=async(req,res)=>{
   try{
     const tk=await tok();
     const vp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20171",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
+    const gp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20170",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:"",FID_INPUT_CNT_1:"",FID_PRC_CLS_CODE:"0"};
+    const v=await pages(tk,"/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J"},7);
+    const g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J"},3);
+    const seen=new Set(),all=[];
+    [...v.items,...g.items].forEach(s=>{if(!s.code||seen.has(s.code))return;seen.add(s.code);if(s.change>=10&&s.change<29&&s.amt>=50)all.push(s)});
+    for(let i=0;i<Math.min(all.length,20);i++){
+      await w(200);
+      try{
+        const r=await rq("GET","/uapi/domestic-stock/v1/quotations/inquire-investor?"+new URLSearchParams({FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:all[i].code}).toString(),{authorization:"Bearer "+tk,appkey:AK,appsecret:AS,tr_id:"FHKST01010900",custtype:"P"});
+        if(r.output&&r.output[0]){all[i].inst=+(r.output[0].orgn_ntby_qty||0);all[i].frgn=+(r.output[0].frgn_ntby_qty||0)}
+      }catch{}
+    }
+    const scored=all.map(score).filter(s=>!s.etf);scored.sort((a,b)=>b.score-a.score);
+    const kst=new Date(Date.now()+9*3600000);
+    res.status(200).json({ok:true,date:kst.toISOString().slice(0,10),time:kst.toISOString().slice(11,16),
+      summary:{total:scored.length,S:scored.filter(s=>s.grade==="S").length,A:scored.filter(s=>s.grade==="A").length,B:scored.filter(s=>s.grade==="B").length,X:scored.filter(s=>s.grade==="X").length},
+      signals:{S:scored.filter(s=>s.grade==="S"),A:scored.filter(s=>s.grade==="A"),B:scored.filter(s=>s.grade==="B"),X:scored.filter(s=>s.grade==="X")},
+      all:scored,debug:{vol:v.items.length,gain:g.items.length,kosdaq:scored.filter(s=>s.market==="KOSDAQ").length,filtered:all.length,errors:[...v.errs,...g.errs]}});
+  }catch(e){res.status(500).json({ok:false,error:e.message})}
+};
+const https=require("https");
+const AK=process.env.KIS_APP_KEY||"PSl3mhWiWrra8foZgmNLG0VgjgKGERoJtOWn";
+const AS=process.env.KIS_APP_SECRET||"IoZNaCqHEJ2mRLwqVQg0nshJ+kiQuRfm4WWeK9umumXCiptxKY6jSEywAaYlGqHDEpX8zG7I12VG4pSZChBiOWm2dmKi34OTZvdy+5DZrgUNZINevoYh+S06WkuyZAw/phJ8cibnZnQ8XkD9fznIQWsEADLJEaXz60KHEZfiXYqNVySqqFI=";
+const H="openapi.koreainvestment.com",P=9443;
+let _tk=null,_te=0;
+function rq(m,p,h,b){return new Promise((y,n)=>{const r=https.request({hostname:H,port:P,path:p,method:m,headers:{...h,"Content-Type":"application/json"}},s=>{let t="";s.on("data",c=>t+=c);s.on("end",()=>{try{y(JSON.parse(t))}catch{n(new Error(t.slice(0,200)))}})});r.on("error",n);if(b)r.write(JSON.stringify(b));r.end()})}
+async function tok(){if(_tk&&Date.now()<_te)return _tk;const r=await rq("POST","/oauth2/tokenP",{},{grant_type:"client_credentials",appkey:AK,appsecret:AS});if(!r.access_token)throw new Error("Tok:"+JSON.stringify(r).slice(0,200));_tk=r.access_token;_te=Date.now()+86300000;return _tk}
+function w(ms){return new Promise(r=>setTimeout(r,ms))}
+function ps(s){const c=s.mksc_shrn_iscd||s.stck_shrn_iscd||"";const c0=c.charAt(0);return{code:c,name:s.hts_kor_isnm||"",price:+s.stck_prpr||0,change:+(s.prdy_ctrt||0),vol:+s.acml_vol||0,amt:Math.round((+s.acml_tr_pbmn||0)/1e8),open:+s.stck_oprc||0,high:+s.stck_hgpr||0,low:+s.stck_lwpr||0,market:(c0==="3"||c0==="4"||c0==="9")?"KOSDAQ":"KOSPI"}}
+async function pages(tk,path,trId,params,n){
+  const all=[],errs=[];
+  for(let i=0;i<n;i++){
+    try{
+      const h={authorization:"Bearer "+tk,appkey:AK,appsecret:AS,tr_id:trId,custtype:"P"};
+      if(i>0)h.tr_cont="N";
+      const r=await rq("GET",path+"?"+new URLSearchParams(params).toString(),h);
+      if(r.rt_cd!=="0"){errs.push(r.msg1||r.msg_cd);break}
+      const items=(r.output||[]).map(ps);
+      if(!items.length)break;
+      all.push(...items);await w(250);
+    }catch(e){errs.push(e.message);break}
+  }
+  return{items:all,errs};
+}
+function score(s){
+  let sc=0;
+  const inv=s.inst>0&&s.frgn>0?"both":s.frgn>0?"frgn":s.inst>0?"inst":"none";
+  if(inv==="both")sc+=3;else if(inv==="frgn")sc+=2;
+  const wk=s.high>0&&s.price>0?(s.high-s.price)/s.price*100:0;
+  if(wk<=0.5)sc+=2;else if(wk<=2)sc+=1;else if(wk>=7)sc-=1;
+  if(s.amt>0&&s.amt<200)sc+=2;else if(s.amt<500)sc+=1;else if(s.amt>=1500)sc-=1;
+  if(s.change>=25)sc+=2;else if(s.change>=20)sc+=1;
+  if(s.market==="KOSDAQ")sc+=1;
+  const etf=["KODEX","TIGER","RISE","ACE","SOL","KIWOOM","KOSEF","HANARO","ETN"].some(k=>(s.name||"").includes(k));
+  if(etf)sc-=3;
+  if(s.change>0&&s.change<=13)sc+=2;
+  if(s.change>=15)sc-=1;
+  sc=Math.max(sc,0);
+  const g=sc>=9?"S":sc>=7?"A":sc>=5?"B":"X";
+  return{...s,score:sc,grade:g,tp1:g==="B"?12:15,tp2:50,sl:13,investor:inv==="both"?"\uAE30+\uC678":inv==="frgn"?"\uC678\uC778":inv==="inst"?"\uAE30\uAD00":"\uC5C6\uC74C",wick:Math.round(wk*10)/10,etf}
+}
+module.exports=async(req,res)=>{
+  res.setHeader("Access-Control-Allow-Origin","*");res.setHeader("Access-Control-Allow-Methods","GET,OPTIONS");res.setHeader("Access-Control-Allow-Headers","*");
+  if(req.method==="OPTIONS")return res.status(200).end();
+  try{
+    const tk=await tok();
+    const vp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20171",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
     const gp={...vp,FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_CNT_1:""};
     const v=await pages(tk,"/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J"},7);
     const g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J"},3);
