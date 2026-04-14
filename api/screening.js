@@ -37,7 +37,7 @@ function score(s){
   if(s.change>=15)sc-=1;
   sc=Math.max(sc,0);
   const g=sc>=9?"S":sc>=7?"A":sc>=5?"B":"X";
-  return{...s,score:sc,grade:g,tp1:g==="B"?12:15,tp2:50,sl:13,investor:inv==="both"?"기+외":inv==="frgn"?"외인":inv==="inst"?"기관":"없음",wick:Math.round(wk*10)/10,etf}
+  return{...s,score:sc,grade:g,tp1:g==="B"?12:15,tp2:50,sl:13,investor:inv==="both"?"\uAE30+\uC678":inv==="frgn"?"\uC678\uC778":inv==="inst"?"\uAE30\uAD00":"\uC5C6\uC74C",wick:Math.round(wk*10)/10,etf}
 }
 module.exports=async(req,res)=>{
   res.setHeader("Access-Control-Allow-Origin","*");res.setHeader("Access-Control-Allow-Methods","GET,OPTIONS");res.setHeader("Access-Control-Allow-Headers","*");
@@ -45,15 +45,11 @@ module.exports=async(req,res)=>{
   try{
     const tk=await tok();
     const vp={FID_INPUT_ISCD:"0000",FID_RANK_SORT_CLS_CODE:"0",FID_COND_SCR_DIV_CODE:"20171",FID_DIV_CLS_CODE:"0",FID_BLNG_CLS_CODE:"0",FID_TRGT_CLS_CODE:"111111111",FID_TRGT_EXLS_CLS_CODE:"000000",FID_INPUT_PRICE_1:"",FID_INPUT_PRICE_2:"",FID_VOL_CNT:"",FID_INPUT_DATE_1:""};
-    // 거래대금 코스피 200 (J만 지원)
+    const gp={...vp,FID_COND_SCR_DIV_CODE:"20170",FID_INPUT_CNT_1:""};
     const v=await pages(tk,"/uapi/domestic-stock/v1/quotations/volume-rank","FHPST01710000",{...vp,FID_COND_MRKT_DIV_CODE:"J"},7);
-    // 등락률 "J"로 코스피+코스닥 동시 (market-data.js와 동일방식)
-    const gp={...vp,FID_COND_SCR_DIV_CODE:"20170"};
     const g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",{...gp,FID_COND_MRKT_DIV_CODE:"J"},3);
-    // 합치기+중복제거+10%필터
     const seen=new Set(),all=[];
     [...v.items,...g.items].forEach(s=>{if(!s.code||seen.has(s.code))return;seen.add(s.code);if(s.change>=10&&s.change<29&&s.amt>=50)all.push(s)});
-    // 투자자 (최대20, 같은 토큰 재사용)
     for(let i=0;i<Math.min(all.length,20);i++){
       await w(200);
       try{
