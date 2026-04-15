@@ -6,7 +6,7 @@ let _tk=null,_te=0;
 function rq(m,p,h,b){return new Promise(function(y,n){var r=https.request({hostname:H,port:P,path:p,method:m,headers:Object.assign({},h,{"Content-Type":"application/json"})},function(s){var t="";s.on("data",function(c){t+=c});s.on("end",function(){try{y(JSON.parse(t))}catch(e){n(new Error(t.slice(0,200)))}})});r.on("error",n);if(b)r.write(JSON.stringify(b));r.end()})}
 async function tok(){if(_tk&&Date.now()<_te)return _tk;var r=await rq("POST","/oauth2/tokenP",{},{grant_type:"client_credentials",appkey:AK,appsecret:AS});if(!r.access_token)throw new Error("Tok:"+JSON.stringify(r).slice(0,200));_tk=r.access_token;_te=Date.now()+86300000;return _tk}
 function w(ms){return new Promise(function(r){setTimeout(r,ms)})}
-function ps(s){var c=s.mksc_shrn_iscd||s.stck_shrn_iscd||"";var c0=c.charAt(0);return{code:c,name:s.hts_kor_isnm||"",price:+s.stck_prpr||0,change:+(s.prdy_ctrt||0),vol:+s.acml_vol||0,amt:Math.round((+s.acml_tr_pbmn||0)/1e8),open:+s.stck_oprc||0,high:+s.stck_hgpr||0,low:+s.stck_lwpr||0,market:(c0==="3"||c0==="4"||c0==="9")?"KOSDAQ":"KOSPI"}}
+function ps(s){var c=s.mksc_shrn_iscd||s.stck_shrn_iscd||"";return{code:c,name:s.hts_kor_isnm||"",price:+s.stck_prpr||0,change:+(s.prdy_ctrt||0),vol:+s.acml_vol||0,amt:Math.round((+s.acml_tr_pbmn||0)/1e8),open:+s.stck_oprc||0,high:+s.stck_hgpr||0,low:+s.stck_lwpr||0,market:"UNKNOWN"}}
 async function pages(tk,path,trId,params,n){
   var all=[],errs=[];
   for(var i=0;i<n;i++){
@@ -53,11 +53,19 @@ module.exports=async function(req,res){
     var g=await pages(tk,"/uapi/domestic-stock/v1/ranking/fluctuation","FHPST01700000",gp,3);
     var seen={},all=[];
     v.items.concat(g.items).forEach(function(s){if(!s.code||seen[s.code])return;seen[s.code]=1;if(s.change>=10&&s.change<29&&s.amt>=50&&s.price>=1000)all.push(s)});
+    var mktCnt={kospi:0,kosdaq:0,unknown:0};
     for(var i=0;i<Math.min(all.length,20);i++){
       await w(200);
       try{
-        var r=await rq("GET","/uapi/domestic-stock/v1/quotations/inquire-investor?"+new URLSearchParams({FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:all[i].code}).toString(),{authorization:"Bearer "+tk,appkey:AK,appsecret:AS,tr_id:"FHKST01010900",custtype:"P"});
-        if(r.output&&r.output[0]){all[i].inst=+(r.output[0].orgn_ntby_qty||0);all[i].frgn=+(r.output[0].frgn_ntby_qty||0)}
+        var r=await rq("GET","/uapi/domestic-stock/v1/quotations/inquire-price?"+new URLSearchParams({FID_COND_MRKT_DIV_CODE:"J",FID_INPUT_ISCD:all[i].code}).toString(),{authorization:"Bearer "+tk,appkey:AK,appsecret:AS,tr_id:"FHKST01010100",custtype:"P"});
+        if(r.output){
+          var mn=(r.output.rprs_mrkt_kor_name||"").toUpperCase();
+          if(mn.indexOf("KOSDAQ")>=0){all[i].market="KOSDAQ";mktCnt.kosdaq++}
+          else if(mn.indexOf("KOSPI")>=0||mn.indexOf("KRX")>=0){all[i].market="KOSPI";mktCnt.kospi++}
+          else{all[i].market="KOSPI";mktCnt.unknown++}
+          all[i].frgn=+(r.output.frgn_ntby_qty||0);
+          all[i].inst=+(r.output.pgtr_ntby_qty||0);
+        }
       }catch(e){}
     }
     var scored=all.map(score).filter(function(s){return!s.etf});
@@ -68,7 +76,7 @@ module.exports=async function(req,res){
       summary:{total:scored.length,S:scored.filter(function(s){return s.grade==="S"}).length,A:scored.filter(function(s){return s.grade==="A"}).length,B:scored.filter(function(s){return s.grade==="B"}).length,X:scored.filter(function(s){return s.grade==="X"}).length},
       signals:{S:scored.filter(function(s){return s.grade==="S"}),A:scored.filter(function(s){return s.grade==="A"}),B:scored.filter(function(s){return s.grade==="B"}),X:scored.filter(function(s){return s.grade==="X"})},
       all:scored,
-      debug:{vol:v.items.length,gain:g.items.length,kosdaq:scored.filter(function(s){return s.market==="KOSDAQ"}).length,filtered:all.length,errors:v.errs.concat(g.errs)}
+      debug:{vol:v.items.length,gain:g.items.length,kospi:mktCnt.kospi,kosdaq:mktCnt.kosdaq,unknown:mktCnt.unknown,filtered:all.length,errors:v.errs.concat(g.errs)}
     });
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 };
