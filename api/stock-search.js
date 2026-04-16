@@ -6,17 +6,16 @@ module.exports=async function(req,res){
   res.setHeader("Access-Control-Allow-Headers","*");
   if(req.method==="OPTIONS")return res.status(200).end();
   try{
-    var names=req.query.names?req.query.names.split(","):req.body&&req.body.names?req.body.names:[];
+    var names=req.query.names?req.query.names.split(","):[];
     if(req.query.name)names=[req.query.name];
-    if(names.length===0)return res.status(400).json({error:"name or names required"});
+    if(names.length===0)return res.status(400).json({error:"name or names param required"});
     var results={};
     for(var i=0;i<names.length;i++){
       var name=names[i].trim();if(!name)continue;
       try{var data=await naverSearch(name);var items=data&&data.items&&data.items[0]?data.items[0]:[[]];
-        if(items.length>0&&items[0].length>0){results[name]={code:items[0][0][0],name:items[0][0][1]}}else{results[name]=null}
-      }catch(e){results[name]=null}
-      if(i<names.length-1)await new Promise(function(r){setTimeout(r,100)});
-    }
+        if(items.length>0&&items[0].length>0){results[name]={code:items[0][0][0],name:items[0][0][1]}}
+        else{results[name]=null}}catch(e){results[name]=null}
+      if(i<names.length-1)await new Promise(function(r){setTimeout(r,100)})}
     res.status(200).json({ok:true,count:Object.keys(results).length,results:results});
   }catch(e){res.status(500).json({error:e.message})}
 };
