@@ -16,4 +16,4 @@ module.exports=async function(req,res){
     res.status(200).json(data);
   }catch(e){res.status(500).json({error:e.message})}
 };
-
+module.exports.config={api:{bodyParser:{sizeLimit:"4mb"}}};
