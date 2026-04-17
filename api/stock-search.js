@@ -2,11 +2,22 @@ const https=require("https");
 
 function naverSearch(name){
   return new Promise(function(y,n){
-    var url="/ac?q="+encodeURIComponent(name)+"&q_enc=utf-8&st=111&frm=stock&r_format=json&t_koreng=1&r_lt=111";
-    var r=https.request({hostname:"ac.finance.naver.com",port:443,path:url,method:"GET"},function(s){
+    var url="/api/search/ac?keyword="+encodeURIComponent(name)+"&target=stock";
+    var r=https.request({hostname:"m.stock.naver.com",port:443,path:url,method:"GET",headers:{"User-Agent":"Mozilla/5.0"}},function(s){
       var t="";
       s.on("data",function(c){t+=c});
-      s.on("end",function(){try{y(JSON.parse(t))}catch(e){n(new Error(t.slice(0,300)))}});
+      s.on("end",function(){
+        try{
+          var d=JSON.parse(t);
+          var items=d.stocks||d.result&&d.result.stocks||[];
+          if(items.length>0){
+            var st=items[0];
+            y({code:st.code||st.reutersCode||"",name:st.name||st.stockName||"",market:st.stockExchangeType&&st.stockExchangeType.name||st.marketName||""});
+          }else{y(null)}
+        }catch(e){
+          n(new Error("Parse:"+t.slice(0,200)))
+        }
+      });
     });
     r.on("error",n);
     r.end();
@@ -28,10 +39,7 @@ module.exports=async function(req,res){
       if(!name)continue;
       try{
         var data=await naverSearch(name);
-        var items=data&&data.items&&data.items[0]?data.items[0]:[];
-        if(items.length>0&&items[0].length>0){
-          results[name]={code:items[0][0],name:items[0][1],market:items[0][2]};
-        }else{results[name]=null}
+        results[name]=data;
       }catch(e){results[name]={error:e.message}}
       if(i<names.length-1)await new Promise(function(r){setTimeout(r,100)});
     }
