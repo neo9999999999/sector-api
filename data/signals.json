@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "id": "1776394770436_321260",
+    "code": "321260",
+    "name": "프로이천",
+    "signal_date": "20260417",
+    "entry_price": 3150,
+    "rate": 11.5,
+    "score": 5,
+    "grade": "B",
+    "supply": "없음",
+    "wick": 0,
+    "vol": 773,
+    "market": "KOSDAQ",
+    "tp1": 12,
+    "tp2": 50,
+    "sl": 13,
+    "outcome": null,
+    "saved_at": "2026-04-17 11:59"
+  }
+]
