@@ -1,4 +1,4 @@
-// api/batch-scan.js v3 — timeout 45s + stocks cache
+// api/batch-scan.js v4 — remove per-request idle timeout (was triggering spuriously)
 const https = require('https');
 
 const KIS_HOST = 'openapi.koreainvestment.com';
@@ -20,7 +20,7 @@ function httpReq(opts, body) {
       res.on('end', () => resolve({status: res.statusCode, body: Buffer.concat(chunks).toString('utf8')}));
     });
     req.on('error', reject);
-    req.setTimeout(45000, () => { req.destroy(new Error('timeout')); });
+    // NOTE: no req.setTimeout — was causing spurious timeouts on chunked KIS responses
     if (body) req.write(body);
     req.end();
   });
