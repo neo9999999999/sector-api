@@ -1,5 +1,10 @@
 {
   "framework": null,
+  "functions": {
+    "api/batch-scan.js": { "maxDuration": 60 },
+    "api/save-stocks.js": { "maxDuration": 60 },
+    "api/stock-master.js": { "maxDuration": 60 }
+  },
   "headers": [
     {
       "source": "/",
