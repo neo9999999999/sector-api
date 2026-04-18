@@ -1,7 +1,8 @@
-// api/batch-scan.js v4 — remove per-request idle timeout (was triggering spuriously)
+// api/batch-scan.js v5 — KIS port 9443 (not 443) + timeout handling
 const https = require('https');
 
 const KIS_HOST = 'openapi.koreainvestment.com';
+const KIS_PORT = 9443;
 const AK = process.env.KIS_APP_KEY;
 const SK = process.env.KIS_APP_SECRET;
 
@@ -20,7 +21,8 @@ function httpReq(opts, body) {
       res.on('end', () => resolve({status: res.statusCode, body: Buffer.concat(chunks).toString('utf8')}));
     });
     req.on('error', reject);
-    // NOTE: no req.setTimeout — was causing spurious timeouts on chunked KIS responses
+    req.on('timeout', () => req.destroy(new Error('req timeout')));
+    req.setTimeout(30000);
     if (body) req.write(body);
     req.end();
   });
@@ -30,7 +32,7 @@ async function getToken() {
   if (_token && Date.now() < _tokenExp) return _token;
   const body = JSON.stringify({grant_type:'client_credentials', appkey:AK, appsecret:SK});
   const r = await httpReq({
-    hostname: KIS_HOST, port: 443, path: '/oauth2/tokenP', method: 'POST',
+    hostname: KIS_HOST, port: KIS_PORT, path: '/oauth2/tokenP', method: 'POST',
     headers: {'Content-Type':'application/json', 'Content-Length': Buffer.byteLength(body)}
   }, body);
   const d = JSON.parse(r.body);
@@ -52,7 +54,7 @@ async function fetchDailyWithRetry(code, startYmd, endYmd, maxRetry = 3) {
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     try {
       const r = await httpReq({
-        hostname: KIS_HOST, port: 443, path, method: 'GET',
+        hostname: KIS_HOST, port: KIS_PORT, path, method: 'GET',
         headers: {
           'Content-Type':'application/json; charset=utf-8',
           'authorization': 'Bearer ' + token,
