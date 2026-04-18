@@ -1,4 +1,4 @@
-// api/batch-scan.js v2 — rate-limit safe + retry
+// api/batch-scan.js v3 — timeout 45s + stocks cache
 const https = require('https');
 
 const KIS_HOST = 'openapi.koreainvestment.com';
@@ -7,6 +7,8 @@ const SK = process.env.KIS_APP_SECRET;
 
 let _token = null;
 let _tokenExp = 0;
+let _stocksCache = null;
+let _stocksCacheAt = 0;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -18,7 +20,7 @@ function httpReq(opts, body) {
       res.on('end', () => resolve({status: res.statusCode, body: Buffer.concat(chunks).toString('utf8')}));
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(new Error('timeout')); });
+    req.setTimeout(45000, () => { req.destroy(new Error('timeout')); });
     if (body) req.write(body);
     req.end();
   });
@@ -38,7 +40,6 @@ async function getToken() {
   return _token;
 }
 
-// KIS 호출에 rate limit 대응 (EGW00201 시 재시도)
 async function fetchDailyWithRetry(code, startYmd, endYmd, maxRetry = 3) {
   const token = await getToken();
   const path = '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice' +
@@ -48,7 +49,6 @@ async function fetchDailyWithRetry(code, startYmd, endYmd, maxRetry = 3) {
     '&FID_INPUT_DATE_2=' + endYmd +
     '&FID_PERIOD_DIV_CODE=D' +
     '&FID_ORG_ADJ_PRC=1';
-
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     try {
       const r = await httpReq({
@@ -61,23 +61,17 @@ async function fetchDailyWithRetry(code, startYmd, endYmd, maxRetry = 3) {
         }
       });
       if (r.status !== 200) {
-        if (r.body.includes('EGW00201') && attempt < maxRetry) {
-          await sleep(500 * (attempt + 1));
-          continue;
-        }
+        if (r.body.includes('EGW00201') && attempt < maxRetry) { await sleep(400 * (attempt + 1)); continue; }
         return {error: 'status ' + r.status, body: r.body.slice(0,200)};
       }
       const d = JSON.parse(r.body);
       if (d.rt_cd === '1') {
-        if (d.msg_cd === 'EGW00201' && attempt < maxRetry) {
-          await sleep(500 * (attempt + 1));
-          continue;
-        }
+        if (d.msg_cd === 'EGW00201' && attempt < maxRetry) { await sleep(400 * (attempt + 1)); continue; }
         return {error: d.msg1 || d.msg_cd, body: r.body.slice(0,200)};
       }
       return {rows: d.output2 || []};
     } catch(e) {
-      if (attempt < maxRetry) { await sleep(500 * (attempt + 1)); continue; }
+      if (attempt < maxRetry) { await sleep(400 * (attempt + 1)); continue; }
       return {error: e.message};
     }
   }
@@ -90,12 +84,12 @@ function addDays(ymd, n) {
   return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
 }
 
-async function fetchAllDaily(code, fromYmd, toYmd, interCallDelayMs = 120) {
+async function fetchAllDaily(code, fromYmd, toYmd, interMs = 150) {
   const all = new Map();
   let end = toYmd;
   let callCount = 0;
   while (end >= fromYmd) {
-    if (callCount > 0) await sleep(interCallDelayMs);  // 같은 종목 내 연속 호출 간격
+    if (callCount > 0) await sleep(interMs);
     const start = addDays(end, -140);
     const startEff = start < fromYmd ? fromYmd : start;
     const r = await fetchDailyWithRetry(code, startEff, end);
@@ -114,6 +108,19 @@ async function fetchAllDaily(code, fromYmd, toYmd, interCallDelayMs = 120) {
   return {rows: sorted};
 }
 
+async function getStocks() {
+  if (_stocksCache && Date.now() - _stocksCacheAt < 3600000) return _stocksCache;
+  const r = await httpReq({
+    hostname: 'raw.githubusercontent.com', port: 443,
+    path: '/neo9999999999/neo-score/main/data/stocks.json', method: 'GET',
+    headers: {'Accept':'application/json'}
+  });
+  if (r.status !== 200) throw new Error('stocks.json fetch status ' + r.status);
+  _stocksCache = JSON.parse(r.body);
+  _stocksCacheAt = Date.now();
+  return _stocksCache;
+}
+
 const pct = (a, b) => (a - b) / b * 100;
 
 module.exports = async (req, res) => {
@@ -122,30 +129,24 @@ module.exports = async (req, res) => {
   if (!AK || !SK) return res.status(500).json({ok:false, error:'KIS keys missing'});
 
   const start = parseInt(req.query.start || '0');
-  const size = Math.min(parseInt(req.query.size || '20'), 50);
+  const size = Math.min(parseInt(req.query.size || '15'), 50);
   const fromYmd = req.query.from || '20230101';
   const toYmd = req.query.to || '20261231';
-  const minAmount = (parseFloat(req.query.minamt || '100') * 1e8);  // 억 단위
+  const minAmount = (parseFloat(req.query.minamt || '100') * 1e8);
   const minChg = parseFloat(req.query.minchg || '10');
 
   try {
-    const listResp = await httpReq({
-      hostname: 'raw.githubusercontent.com', port: 443,
-      path: '/neo9999999999/neo-score/main/data/stocks.json', method: 'GET',
-      headers: {'Accept':'application/json'}
-    });
-    if (listResp.status !== 200) return res.status(502).json({ok:false, error:'stocks.json fetch', status:listResp.status});
-    const stocksDoc = JSON.parse(listResp.body);
+    const stocksDoc = await getStocks();
     const stocks = stocksDoc.stocks.slice(start, start + size);
 
     const signals = [];
     const errors = [];
 
     for (const s of stocks) {
-      const r = await fetchAllDaily(s.code, fromYmd, toYmd, 120);
+      const r = await fetchAllDaily(s.code, fromYmd, toYmd, 150);
       if (r.error) {
         errors.push({code:s.code, name:s.name, error:r.error, partial:r.partial});
-        await sleep(200);  // 에러 후 쿨다운
+        await sleep(300);
         continue;
       }
       const rows = r.rows;
@@ -170,10 +171,8 @@ module.exports = async (req, res) => {
         const TP1 = 25, TP2 = 100, SL = 10;
         for (let j = 0; j < futureRows.length; j++) {
           const fr = futureRows[j];
-          const fh = +fr.stck_hgpr;
-          const fl = +fr.stck_lwpr;
-          const hPct = pct(fh, curClose);
-          const lPct = pct(fl, curClose);
+          const hPct = pct(+fr.stck_hgpr, curClose);
+          const lPct = pct(+fr.stck_lwpr, curClose);
           if (hPct > peakPct) peakPct = hPct;
           if (lPct < troughPct) troughPct = lPct;
           if (!tp1Hit && hPct >= TP1) tp1Hit = fr.stck_bsop_date;
@@ -201,15 +200,13 @@ module.exports = async (req, res) => {
     }
 
     return res.status(200).json({
-      ok: true,
-      start, size,
+      ok: true, start, size,
       total_stocks: stocksDoc.stocks.length,
       processed: stocks.length,
       next_start: start + size < stocksDoc.stocks.length ? start + size : null,
       signals_count: signals.length,
       errors_count: errors.length,
-      signals,
-      errors
+      signals, errors
     });
   } catch(e) {
     return res.status(500).json({ok:false, error:e.message, stack:(e.stack||'').slice(0,400)});
