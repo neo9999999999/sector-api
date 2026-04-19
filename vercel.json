@@ -1,6 +1,5 @@
 {
   "framework": null,
-  "buildCommand": "echo building v2",
   "functions": {
     "api/batch-scan.js": { "maxDuration": 60 },
     "api/save-stocks.js": { "maxDuration": 60 },
