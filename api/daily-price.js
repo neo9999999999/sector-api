@@ -1,4 +1,4 @@
-// api/daily-price.js — KIS 일별 주가 + 투자자 매매동향
+// api/daily-price.js — KIS 일별 주가 + 투자자 매매동향 (최근 30일 & 과거)
 const https = require('https');
 const AK = process.env.KIS_APP_KEY;
 const AS = process.env.KIS_APP_SECRET;
@@ -18,6 +18,13 @@ async function fetchInv(code, tk){
   return r;
 }
 
+// 과거 일자 범위 투자자 매매동향 - inquire-investor-daily-by-date (tr_id: FHKST03010400 또는 FHPTJ04400000)
+// FHKST03900000: 종목별 외국인/기관 일별 — 과거 데이터 가능
+async function fetchInvHist(code, fromYmd, toYmd, tk){
+  const r = await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-date?'+new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code,FID_INPUT_DATE_1:fromYmd,FID_INPUT_DATE_2:toYmd}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHKST03010400',custtype:'P'});
+  return r;
+}
+
 module.exports=async function(req,res){
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Methods','GET,OPTIONS');
@@ -28,7 +35,6 @@ module.exports=async function(req,res){
     const tk=await tok();
     const {code,date,from,to,name,verify_rate,kind,codes}=req.query;
 
-    // ==== 투자자 매매동향 모드 ====
     if(kind==='inv'){
       if(codes){
         const list=codes.split(',').filter(Boolean).slice(0,20);
@@ -40,7 +46,7 @@ module.exports=async function(req,res){
             if(r.rt_cd==='0') data[c]=r.output||[];
             else errors.push({code:c,msg:r.msg1||r.msg_cd});
           }catch(e){errors.push({code:c,err:e.message});}
-          await sleep(200);
+          await sleep(180);
         }
         return res.json({ok:true,count:list.length,data,errors});
       }
@@ -49,7 +55,14 @@ module.exports=async function(req,res){
       return res.json({ok:true,code,rt_cd:r.rt_cd,msg:r.msg1,output:r.output||[]});
     }
 
-    // ==== 종목명으로 코드 검색 ====
+    if(kind==='inv2'){
+      if(!code) return res.status(400).json({ok:false,error:'kind=inv2 requires code'});
+      const f = toKis(from||date) || '20260101';
+      const t = toKis(to||date) || '20261231';
+      const r=await fetchInvHist(code,f,t,tk);
+      return res.json({ok: r.rt_cd==='0', code, from:f, to:t, rt_cd:r.rt_cd, msg:r.msg1, output:r.output||[], raw:r.rt_cd!=='0'?r:undefined});
+    }
+
     if(name&&!code){
       const r=await rq('GET','/uapi/domestic-stock/v1/quotations/search-stock-info?'+new URLSearchParams({PRDT_TYPE_CD:'300',PDNO:name}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'CTPF1604R',custtype:'P'});
       return res.json({ok:true,mode:'name_search',name,result:r.output||r});
@@ -57,7 +70,6 @@ module.exports=async function(req,res){
 
     if(!code)return res.status(400).json({ok:false,error:'code 파라미터 필요'});
 
-    // ==== 일별 주가 (원본 기능) ====
     const t1=toKis(date||from), t2=toKis(to||date||from);
     if(!t1)return res.status(400).json({ok:false,error:'date 파라미터 필요'});
     const r=await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?'+new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code,FID_INPUT_DATE_1:t1,FID_INPUT_DATE_2:t2,FID_PERIOD_DIV_CODE:'D',FID_ORG_ADJ_PRC:'0'}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHKST03010100',custtype:'P'});
