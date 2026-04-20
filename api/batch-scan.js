@@ -1,15 +1,12 @@
-// api/batch-scan.js v5 — KIS port 9443 (not 443) + timeout handling
+// api/batch-scan.js v6 — 50/50 split TP logic, close-based SL, OHLC preserved
 const https = require('https');
-
 const KIS_HOST = 'openapi.koreainvestment.com';
 const KIS_PORT = 9443;
 const AK = process.env.KIS_APP_KEY;
 const SK = process.env.KIS_APP_SECRET;
 
-let _token = null;
-let _tokenExp = 0;
-let _stocksCache = null;
-let _stocksCacheAt = 0;
+let _token = null, _tokenExp = 0;
+let _stocksCache = null, _stocksCacheAt = 0;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -44,30 +41,19 @@ async function getToken() {
 
 async function fetchDailyWithRetry(code, startYmd, endYmd, maxRetry = 3) {
   const token = await getToken();
-  const path = '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice' +
-    '?FID_COND_MRKT_DIV_CODE=J' +
-    '&FID_INPUT_ISCD=' + code +
-    '&FID_INPUT_DATE_1=' + startYmd +
-    '&FID_INPUT_DATE_2=' + endYmd +
-    '&FID_PERIOD_DIV_CODE=D' +
-    '&FID_ORG_ADJ_PRC=1';
+  const path = '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=' + code + '&FID_INPUT_DATE_1=' + startYmd + '&FID_INPUT_DATE_2=' + endYmd + '&FID_PERIOD_DIV_CODE=D&FID_ORG_ADJ_PRC=1';
   for (let attempt = 0; attempt <= maxRetry; attempt++) {
     try {
       const r = await httpReq({
         hostname: KIS_HOST, port: KIS_PORT, path, method: 'GET',
-        headers: {
-          'Content-Type':'application/json; charset=utf-8',
-          'authorization': 'Bearer ' + token,
-          'appkey': AK, 'appsecret': SK,
-          'tr_id': 'FHKST03010100', 'custtype': 'P'
-        }
+        headers: {'Content-Type':'application/json; charset=utf-8','authorization':'Bearer ' + token,'appkey': AK, 'appsecret': SK, 'tr_id': 'FHKST03010100', 'custtype': 'P'}
       });
       if (r.status !== 200) {
         if (r.body.includes('EGW00201') && attempt < maxRetry) { await sleep(400 * (attempt + 1)); continue; }
         return {error: 'status ' + r.status, body: r.body.slice(0,200)};
       }
       const d = JSON.parse(r.body);
-      if (d.rt_cd === '1') {
+      if (d.rt_cd !== '0') {
         if (d.msg_cd === 'EGW00201' && attempt < maxRetry) { await sleep(400 * (attempt + 1)); continue; }
         return {error: d.msg1 || d.msg_cd, body: r.body.slice(0,200)};
       }
@@ -96,17 +82,14 @@ async function fetchAllDaily(code, fromYmd, toYmd, interMs = 150) {
     const startEff = start < fromYmd ? fromYmd : start;
     const r = await fetchDailyWithRetry(code, startEff, end);
     callCount++;
-    if (r.error) return {error: r.error, partial: all.size};
-    if (!r.rows || r.rows.length === 0) break;
-    for (const row of r.rows) {
-      const d = row.stck_bsop_date;
-      if (!all.has(d) && d >= fromYmd && d <= toYmd) all.set(d, row);
-    }
-    const oldest = r.rows[r.rows.length - 1].stck_bsop_date;
+    if (r.error) return {error: r.error, partial: all.size > 0};
+    if (!r.rows.length) break;
+    for (const row of r.rows) all.set(row.stck_bsop_date, row);
+    const oldest = r.rows[r.rows.length-1].stck_bsop_date;
     if (oldest <= fromYmd) break;
     end = addDays(oldest, -1);
   }
-  const sorted = [...all.entries()].sort((a,b) => a[0] < b[0] ? -1 : 1).map(([,v]) => v);
+  const sorted = [...all.values()].sort((a,b) => a.stck_bsop_date < b.stck_bsop_date ? -1 : 1);
   return {rows: sorted};
 }
 
@@ -125,6 +108,94 @@ async function getStocks() {
 
 const pct = (a, b) => (a - b) / b * 100;
 
+// 50/50 분할 + 종가 SL + 기간만료 종가 시뮬레이션
+function simulate(fohlc, TP1, TP2, SL) {
+  let tp1HitIdx = -1, tp2HitIdx = -1, slHitIdx = -1;
+  for (let j = 0; j < fohlc.length; j++) {
+    const fr = fohlc[j];
+    if (tp1HitIdx < 0 && fr.h >= TP1) tp1HitIdx = j;
+    if (tp2HitIdx < 0 && fr.h >= TP2) tp2HitIdx = j;
+    // 종가 기준 SL
+    if (slHitIdx < 0 && fr.c <= -SL) slHitIdx = j;
+  }
+  
+  const last = fohlc[fohlc.length-1];
+  const expPct = last ? last.c : 0;  // 기간만료일 종가
+  const expDays = fohlc.length;
+  
+  let result, t, exitIdx, detail = {};
+  
+  // SL이 TP1보다 먼저 오면 → 전량 SL 손절 (종가)
+  if (slHitIdx >= 0 && (tp1HitIdx < 0 || slHitIdx < tp1HitIdx)) {
+    result = 'SL';
+    t = fohlc[slHitIdx].c;  // 종가 기준 실제 손실
+    exitIdx = slHitIdx;
+    detail = {sl_idx: slHitIdx, sl_pct: +t.toFixed(2)};
+  }
+  // TP1 도달
+  else if (tp1HitIdx >= 0) {
+    const half1 = 0.5 * TP1;  // 고정
+    
+    if (tp2HitIdx >= 0) {
+      // BOTH: 나머지 50% TP2 익절
+      const half2 = 0.5 * TP2;
+      t = half1 + half2;
+      result = 'BOTH';
+      exitIdx = tp2HitIdx;
+      detail = {tp1_idx: tp1HitIdx, tp2_idx: tp2HitIdx, half1: +half1.toFixed(2), half2: +half2.toFixed(2)};
+    } else {
+      // TP1 도달 후 TP2 미도달. 나머지 50%는 TP1 이후부터 추적:
+      // - 이후 종가 SL → SL로 나머지 50% 손절
+      // - 그 외 → 기간만료 종가로 나머지 50% 매도
+      let afterSLIdx = -1;
+      for (let j = tp1HitIdx + 1; j < fohlc.length; j++) {
+        if (fohlc[j].c <= -SL) { afterSLIdx = j; break; }
+      }
+      
+      if (afterSLIdx >= 0) {
+        // TP1 + 이후 SL
+        const half2 = fohlc[afterSLIdx].c;  // 종가
+        t = half1 + 0.5 * half2;
+        result = 'TP1_SL';
+        exitIdx = afterSLIdx;
+        detail = {tp1_idx: tp1HitIdx, sl_after_idx: afterSLIdx, half1: +half1.toFixed(2), half2: +(0.5*half2).toFixed(2)};
+      } else {
+        // TP1 + 기간만료
+        const half2 = expPct;
+        t = half1 + 0.5 * half2;
+        result = 'TP1';  // TP1만 도달, 나머지 기간만료
+        exitIdx = fohlc.length - 1;
+        detail = {tp1_idx: tp1HitIdx, half1: +half1.toFixed(2), half2: +(0.5*half2).toFixed(2)};
+      }
+    }
+  }
+  // SL도 TP1도 없으면 기간만료
+  else {
+    result = 'TO';
+    t = expPct;
+    exitIdx = fohlc.length - 1;
+    detail = {exp_pct: +expPct.toFixed(2)};
+  }
+  
+  return {
+    result,
+    t: +t.toFixed(2),
+    tp1_idx: tp1HitIdx,
+    tp2_idx: tp2HitIdx,
+    sl_idx: slHitIdx,
+    exit_idx: exitIdx,
+    tp1_date: tp1HitIdx >= 0 ? fohlc[tp1HitIdx].d : null,
+    tp2_date: tp2HitIdx >= 0 ? fohlc[tp2HitIdx].d : null,
+    sl_date: slHitIdx >= 0 ? fohlc[slHitIdx].d : null,
+    exit_date: exitIdx >= 0 ? fohlc[exitIdx].d : null,
+    tp1_days: tp1HitIdx >= 0 ? tp1HitIdx + 1 : null,
+    tp2_days: tp2HitIdx >= 0 ? tp2HitIdx + 1 : null,
+    sl_days: slHitIdx >= 0 ? slHitIdx + 1 : null,
+    exit_days: exitIdx >= 0 ? exitIdx + 1 : null,
+    detail
+  };
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -136,11 +207,12 @@ module.exports = async (req, res) => {
   const toYmd = req.query.to || '20261231';
   const minAmount = (parseFloat(req.query.minamt || '100') * 1e8);
   const minChg = parseFloat(req.query.minchg || '10');
+  const maxChg = parseFloat(req.query.maxchg || '29.5');  // 상한가 제외
+  const lookahead = parseInt(req.query.la || '20');
 
   try {
     const stocksDoc = await getStocks();
     const stocks = stocksDoc.stocks.slice(start, start + size);
-
     const signals = [];
     const errors = [];
 
@@ -157,46 +229,51 @@ module.exports = async (req, res) => {
         const cur = rows[i];
         const prevClose = +prev.stck_clpr;
         const curClose = +cur.stck_clpr;
-        const curHigh = +cur.stck_hgpr;
-        const curLow = +cur.stck_lwpr;
-        const curOpen = +cur.stck_oprc;
-        const vol = +cur.acml_vol;
-        const amount = +cur.acml_tr_pbmn;
         if (!prevClose || !curClose) continue;
         const chg = pct(curClose, prevClose);
         if (chg < minChg) continue;
+        if (chg >= maxChg) continue;  // 상한가 제외
+        const amount = +cur.acml_tr_pbmn;
         if (amount < minAmount) continue;
 
-        const futureRows = rows.slice(i+1, i+1+20);
-        let peakPct = 0, troughPct = 0;
-        let tp1Hit = null, tp2Hit = null, slHit = null;
-        const TP1 = 25, TP2 = 100, SL = 10;
-        for (let j = 0; j < futureRows.length; j++) {
-          const fr = futureRows[j];
-          const hPct = pct(+fr.stck_hgpr, curClose);
-          const lPct = pct(+fr.stck_lwpr, curClose);
-          if (hPct > peakPct) peakPct = hPct;
-          if (lPct < troughPct) troughPct = lPct;
-          if (!tp1Hit && hPct >= TP1) tp1Hit = fr.stck_bsop_date;
-          if (!tp2Hit && hPct >= TP2) tp2Hit = fr.stck_bsop_date;
-          if (!slHit && lPct <= -SL) slHit = fr.stck_bsop_date;
+        // future OHLC in % from curClose
+        const futureRows = rows.slice(i+1, i+1+lookahead);
+        const fohlc = futureRows.map(fr => ({
+          d: fr.stck_bsop_date,
+          o: +pct(+fr.stck_oprc, curClose).toFixed(2),
+          h: +pct(+fr.stck_hgpr, curClose).toFixed(2),
+          l: +pct(+fr.stck_lwpr, curClose).toFixed(2),
+          c: +pct(+fr.stck_clpr, curClose).toFixed(2)
+        }));
+        
+        // 기본 TP/SL 시뮬 (25/100/10)
+        const sim = simulate(fohlc, 25, 100, 10);
+        
+        // peak/trough
+        let peak = 0, trough = 0;
+        for (const fr of fohlc) {
+          if (fr.h > peak) peak = fr.h;
+          if (fr.l < trough) trough = fr.l;
         }
-        let result = 'TO';
-        if (tp1Hit && tp2Hit) result = 'BOTH';
-        else if (tp1Hit && !slHit) result = 'TP1';
-        else if (slHit && !tp1Hit) result = 'SL';
-        else if (tp1Hit && slHit) result = tp1Hit <= slHit ? 'TP1' : 'SL';
 
         signals.push({
           code: s.code, name: s.name, market: s.market,
           date: cur.stck_bsop_date,
-          open: curOpen, high: curHigh, low: curLow, close: curClose, prev_close: prevClose,
+          open: +cur.stck_oprc, high: +cur.stck_hgpr, low: +cur.stck_lwpr,
+          close: curClose, prev_close: prevClose,
           change_pct: +chg.toFixed(2),
-          volume: vol, amount,
-          peak_pct: +peakPct.toFixed(2),
-          trough_pct: +troughPct.toFixed(2),
-          tp1_date: tp1Hit, tp2_date: tp2Hit, sl_date: slHit,
-          result
+          volume: +cur.acml_vol, amount,
+          peak_pct: +peak.toFixed(2),
+          trough_pct: +trough.toFixed(2),
+          // 새 필드
+          result: sim.result,
+          t: sim.t,
+          tp1_date: sim.tp1_date, tp2_date: sim.tp2_date,
+          sl_date: sim.sl_date, exit_date: sim.exit_date,
+          tp1_days: sim.tp1_days, tp2_days: sim.tp2_days,
+          sl_days: sim.sl_days, exit_days: sim.exit_days,
+          // future OHLC 배열 (앱에서 cTP 변경 시 재시뮬)
+          future: fohlc
         });
       }
     }
@@ -204,13 +281,10 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       ok: true, start, size,
       total_stocks: stocksDoc.stocks.length,
-      processed: stocks.length,
-      next_start: start + size < stocksDoc.stocks.length ? start + size : null,
-      signals_count: signals.length,
-      errors_count: errors.length,
-      signals, errors
+      signals, errors,
+      count: signals.length
     });
   } catch(e) {
-    return res.status(500).json({ok:false, error:e.message, stack:(e.stack||'').slice(0,400)});
+    return res.status(500).json({ok:false, error: e.message});
   }
 };
