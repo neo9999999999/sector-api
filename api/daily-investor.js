@@ -1,85 +1,62 @@
-// api/daily-investor.js v3 — correct unit conversion (백만원 → 억원)
-async function getToken(k,s){
-  const cached = globalThis.__kisTok;
-  if (cached && Date.now() - cached.at < 23*3600*1000) return cached.token;
-  const r = await fetch('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({grant_type:'client_credentials', appkey:k, appsecret:s})
-  });
-  const j = await r.json();
-  if (!j.access_token) throw new Error('token fail: '+(j.msg1||JSON.stringify(j).slice(0,150)));
-  globalThis.__kisTok = { token: j.access_token, at: Date.now() };
-  return j.access_token;
-}
-
-export default async function handler(req, res) {
-  try {
-    res.setHeader('Access-Control-Allow-Origin','*');
-    const { code, date, debug } = req.query;
-    if (!code || !date) return res.status(400).json({ ok:false, error:'code and date required' });
-
-    const APP_KEY = process.env.KIS_APP_KEY;
-    const APP_SECRET = process.env.KIS_APP_SECRET;
-    if (!APP_KEY || !APP_SECRET) return res.status(500).json({ ok:false, error:'KIS credentials missing' });
-
-    const token = await getToken(APP_KEY, APP_SECRET);
-
-    const url = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor'
-      + '?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=' + code;
-
-    const kr = await fetch(url, {
+// api/daily-investor.js — 네이버 금융 외국인/기관 순매수 과거 조회 (euc-kr)
+// 엔드포인트: /api/daily-investor?code=000660&pages=5
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+  
+  const code = req.query.code;
+  const pages = Math.min(parseInt(req.query.pages) || 5, 30);
+  if (!code) return res.status(400).json({ ok: false, error: 'code required' });
+  
+  async function getPage(p) {
+    const url = `https://finance.naver.com/item/frgn.naver?code=${code}&page=${p}`;
+    const r = await fetch(url, {
       headers: {
-        'Content-Type':'application/json; charset=utf-8',
-        'Authorization':'Bearer ' + token,
-        'appkey': APP_KEY, 'appsecret': APP_SECRET,
-        'tr_id': 'FHKST01010900'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Referer': 'https://finance.naver.com/'
       }
     });
-
-    const kd = await kr.json();
-    if (kd.rt_cd !== '0') {
-      return res.status(502).json({ ok:false, error:'KIS '+kd.msg_cd+' '+kd.msg1 });
-    }
-
-    const rows = kd.output || [];
-    const row = rows.find(r => r.stck_bsop_date === date);
-
-    if (debug === '1') {
-      return res.status(200).json({
-        ok:true, debug:true,
-        rowCount: rows.length,
-        firstRow: rows[0] || null,
-        firstRowKeys: rows[0] ? Object.keys(rows[0]) : [],
-        targetRow: row,
-        availableDates: rows.map(r => r.stck_bsop_date).slice(0, 10)
-      });
-    }
-
-    if (!row) {
-      return res.status(404).json({
-        ok:false, error:'date not in 30-day window',
-        availableDates: rows.map(r => r.stck_bsop_date).slice(0, 5)
-      });
-    }
-
-    // KIS 반환은 '백만원' 단위 → 억원으로 환산 (÷100)
-    const 외 = Math.round(+(row.frgn_ntby_tr_pbmn || 0) / 100);
-    const 기 = Math.round(+(row.orgn_ntby_tr_pbmn || 0) / 100);
-    const 개 = Math.round(+(row.prsn_ntby_tr_pbmn || 0) / 100);
-    const 외기합 = 외 + 기;
-
-    const sign = n => (n >= 0 ? '+' : '') + n;
-    const inv_str = '외'+sign(외)+'억/기'+sign(기)+'억/개'+sign(개)+'억';
-    const isX = 외기합 >= 50 || 개 <= -50;
-
-    return res.status(200).json({
-      ok: true, code, date,
-      외, 기, 개, 외기합, inv_str, isX,
-      source: 'kis-FHKST01010900', version: 'v3',
-      unit: '억원 (from 백만원)'
-    });
-
-  } catch(e) {
-    return res.status(500).json({ ok:false, error: e.message });
+    if (!r.ok) throw new Error('fetch failed ' + r.status);
+    const buf = await r.arrayBuffer();
+    const decoder = new TextDecoder('euc-kr');
+    return decoder.decode(buf);
   }
-}
+  
+  function parseHtml(html) {
+    const rows = [];
+    const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+    let m;
+    while ((m = trRe.exec(html))) {
+      const tr = m[1];
+      const tds = [...tr.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(x => 
+        x[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim()
+      );
+      if (tds.length >= 8 && /\d{4}\.\d{2}\.\d{2}/.test(tds[0])) {
+        const frgnRaw = tds[6].replace(/[,\s]/g, '');
+        const orgnRaw = tds[7].replace(/[,\s]/g, '');
+        rows.push({
+          date: tds[0].replace(/\./g, ''),
+          close: parseInt(tds[1].replace(/,/g, '')) || 0,
+          frgn_net: parseInt(frgnRaw) || 0,
+          orgn_net: parseInt(orgnRaw) || 0
+        });
+      }
+    }
+    return rows;
+  }
+  
+  try {
+    const allRows = [];
+    for (let p = 1; p <= pages; p++) {
+      const html = await getPage(p);
+      const rows = parseHtml(html);
+      if (rows.length === 0) break;
+      allRows.push(...rows);
+      if (rows.length < 10) break;
+    }
+    res.json({ ok: true, code, count: allRows.length, rows: allRows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+};
