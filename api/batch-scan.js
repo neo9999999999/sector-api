@@ -272,22 +272,22 @@ module.exports = async (req, res) => {
               if (_va20 > 0) _v8.vol_mult = +(_v / _va20).toFixed(2);
             }
             if (i >= 60) {
-              let _s60 = 0, _s5 = 0, _s20b = 0;
-              for (let _k = i - 60; _k < i; _k++) _s60 += +rows[_k].stck_clpr;
+              let _s60 = 0, _s5 = 0, _s20b = 0, _h60 = 0;
+              for (let _k = i - 60; _k < i; _k++) { _s60 += +rows[_k].stck_clpr; if (+rows[_k].stck_clpr > _h60) _h60 = +rows[_k].stck_clpr; }
               for (let _k = i - 5; _k < i; _k++) _s5 += +rows[_k].stck_clpr;
               for (let _k = i - 20; _k < i; _k++) _s20b += +rows[_k].stck_clpr;
               const _m60 = _s60 / 60, _m5 = _s5 / 5, _m20b = _s20b / 20;
               if (_m60 > 0) {
                 _v8.ma60_dist = +((_c - _m60) / _m60 * 100).toFixed(2);
-                _v8.above_ma60 = _c > _m60 ? 1 : 0;
+                _v8.above_ma60 = _c > _m60 ? 1 : 0; _v8.is_high_60 = (_h60 > 0 && curClose >= _h60) ? 1 : 0;
                 _v8.ma_healthy = (_m5 > _m20b && _m20b > _m60) ? 1 : 0;
               }
             }
             if (i >= 120) {
-              let _s120 = 0;
-              for (let _k = i - 120; _k < i; _k++) _s120 += +rows[_k].stck_clpr;
+              let _s120 = 0, _h120 = 0;
+              for (let _k = i - 120; _k < i; _k++) { _s120 += +rows[_k].stck_clpr; if (+rows[_k].stck_clpr > _h120) _h120 = +rows[_k].stck_clpr; }
               const _m120 = _s120 / 120;
-              if (_m120 > 0) _v8.above_ma120 = _c > _m120 ? 1 : 0;
+              if (_m120 > 0) _v8.above_ma120 = _c > _m120 ? 1 : 0; _v8.is_high_120 = (_h120 > 0 && curClose >= _h120) ? 1 : 0;
             }
           } catch(_e) {}
           // === v8 end ===
@@ -308,7 +308,7 @@ module.exports = async (req, res) => {
           sl_days: sim.sl_days, be_days: sim.be_days, exit_days: sim.exit_days,
           tp1_to_tp2_days: sim.tp1_to_tp2_days,
           future: fohlc
-        , wick_ratio: _v8.wick_ratio, close_pos: _v8.close_pos, gap_pct: _v8.gap_pct, consec_up_5d: _v8.consec_up_5d, ma20_dist: _v8.ma20_dist, ma60_dist: _v8.ma60_dist, vol_mult: _v8.vol_mult, above_ma60: _v8.above_ma60, above_ma120: _v8.above_ma120, ma_healthy: _v8.ma_healthy});
+        , wick_ratio: _v8.wick_ratio, close_pos: _v8.close_pos, gap_pct: _v8.gap_pct, consec_up_5d: _v8.consec_up_5d, ma20_dist: _v8.ma20_dist, ma60_dist: _v8.ma60_dist, vol_mult: _v8.vol_mult, above_ma60: _v8.above_ma60, above_ma120: _v8.above_ma120, ma_healthy: _v8.ma_healthy, is_high_60: _v8.is_high_60, is_high_120: _v8.is_high_120});
       }
     }
 
