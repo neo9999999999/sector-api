@@ -197,6 +197,10 @@ module.exports = async (req, res) => {
   const start = parseInt(req.query.start || '0');
   const size = Math.min(parseInt(req.query.size || '15'), 50);
   const fromYmd = req.query.from || '20230101';
+  // Auto lookback for 120d high calculation
+  const fromDt = new Date(fromYmd.slice(0,4) + '-' + fromYmd.slice(4,6) + '-' + fromYmd.slice(6,8));
+  fromDt.setDate(fromDt.getDate() - 200);
+  const fetchFromYmd = fromDt.toISOString().slice(0,10).replace(/-/g, '');
   const toYmd = req.query.to || '20261231';
   const minAmount = (parseFloat(req.query.minamt || '100') * 1e8);
   const minChg = parseFloat(req.query.minchg || '10');
@@ -210,7 +214,7 @@ module.exports = async (req, res) => {
     const errors = [];
 
     for (const s of stocks) {
-      const r = await fetchAllDaily(s.code, fromYmd, toYmd, 150);
+      const r = await fetchAllDaily(s.code, fetchFromYmd, toYmd, 150);
       if (r.error) {
         errors.push({code:s.code, name:s.name, error:r.error, partial:r.partial});
         await sleep(300);
@@ -315,7 +319,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       ok: true, start, size,
       total_stocks: stocksDoc.stocks.length,
-      signals, errors,
+      signals: signals.filter(s => s.date >= fromYmd), errors,
       count: signals.length,
       version: 'v8'
     });
