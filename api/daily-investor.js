@@ -1,12 +1,10 @@
-// api/daily-investor.js — 네이버 금융 외국인/기관 순매수
-// 컬럼: [0]날짜 [1]종가 [2]전일비 [3]등락률 [4]거래량 [5]기관순매수 [6]외국인순매수 [7]외인보유주수 [8]외인보유율
-// /api/daily-investor?code=000660&pages=5
+// api/daily-investor.js — 네이버 금융 외국인/기관 순매수 (pages max 100)
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   const code = req.query.code;
-  const pages = Math.min(parseInt(req.query.pages) || 5, 30);
+  const pages = Math.min(parseInt(req.query.pages) || 5, 100);
   if (!code) return res.status(400).json({ ok: false, error: 'code required' });
   
   async function getPage(p) {
@@ -38,8 +36,8 @@ module.exports = async (req, res) => {
         rows.push({
           date: tds[0].replace(/\./g, ''),
           close: num(tds[1]),
-          orgn_net: num(tds[5]),    // 기관 순매수
-          frgn_net: num(tds[6])     // 외국인 순매수
+          orgn_net: num(tds[5]),
+          frgn_net: num(tds[6])
         });
       }
     }
