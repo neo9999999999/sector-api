@@ -1,5 +1,24 @@
 [
   {
+    "id": "1776904079371_024840",
+    "code": "024840",
+    "name": "KBI메탈",
+    "signal_date": "20260423",
+    "entry_price": 3015,
+    "rate": 14.2,
+    "score": 5,
+    "grade": "B",
+    "supply": "기관",
+    "wick": 0,
+    "vol": 192,
+    "market": "KOSDAQ",
+    "tp1": 12,
+    "tp2": 50,
+    "sl": 13,
+    "outcome": null,
+    "saved_at": "2026-04-23 09:27"
+  },
+  {
     "id": "1776903879387_023790",
     "code": "023790",
     "name": "동일스틸럭스",
