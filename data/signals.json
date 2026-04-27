@@ -1,5 +1,24 @@
 [
   {
+    "id": "1777250382468_078150",
+    "code": "078150",
+    "name": "HB테크놀러지",
+    "signal_date": "20260427",
+    "entry_price": 3050,
+    "rate": 10.71,
+    "score": 6,
+    "grade": "B",
+    "supply": "기관",
+    "wick": 0,
+    "vol": 254,
+    "market": "KOSDAQ",
+    "tp1": 12,
+    "tp2": 50,
+    "sl": 13,
+    "outcome": null,
+    "saved_at": "2026-04-27 09:39"
+  },
+  {
     "id": "1777215707188_027360",
     "code": "027360",
     "name": "아주IB투자",
