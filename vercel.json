@@ -12,6 +12,9 @@
     },
     "api/daily-price.js": {
       "maxDuration": 30
+    },
+    "api/analyze.js": {
+      "maxDuration": 60
     }
   },
   "headers": [
