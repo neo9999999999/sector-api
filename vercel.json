@@ -1,19 +1,28 @@
 {
   "framework": null,
   "functions": {
-    "api/batch-scan.js": { "maxDuration": 60 },
-    "api/save-stocks.js": { "maxDuration": 60 },
-    "api/stock-master.js": { "maxDuration": 60 },
-    "api/daily-price.js": { "maxDuration": 30 },
-    "api/daily-signal.js": { "maxDuration": 60 }
+    "api/batch-scan.js": {
+      "maxDuration": 60
+    },
+    "api/save-stocks.js": {
+      "maxDuration": 60
+    },
+    "api/stock-master.js": {
+      "maxDuration": 60
+    },
+    "api/daily-price.js": {
+      "maxDuration": 30
+    }
   },
   "headers": [
     {
       "source": "/",
-      "headers": [{"key": "Cache-Control", "value": "no-cache, no-store, must-revalidate"}]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
     }
-  ],
-  "crons": [
-    { "path": "/api/daily-signal", "schedule": "55 5 * * 1-5" }
   ]
 }
