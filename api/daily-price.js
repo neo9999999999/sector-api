@@ -7,7 +7,7 @@ let _tk=null, _te=0;
 
 function rq(m,p,h,b){return new Promise((y,n)=>{const r=https.request({hostname:H,port:P,path:p,method:m,headers:Object.assign({},h,{'Content-Type':'application/json'})},s=>{let t='';s.on('data',c=>t+=c);s.on('end',()=>{try{y(JSON.parse(t))}catch(e){n(new Error(t.slice(0,200)))}})});r.on('error',n);if(b)r.write(JSON.stringify(b));r.end()});}
 
-async function tok(){if(_tk&&Date.now()<_te)return _tk;const r=await rq('POST','/oauth2/tokenP',{},{grant_type:'client_credentials',appkey:AK,appsecret:AS});if(!r.access_token)throw new Error('Token:'+JSON.stringify(r).slice(0,200));_tk=r.access_token;_te=Date.now()+86300000;return _tk;}
+async function tok(){if(_tk&&Date.now()<_te)return _tk;let lastErr;for(let i=0;i<3;i++){try{const r=await rq('POST','/oauth2/tokenP',{},{grant_type:'client_credentials',appkey:AK,appsecret:AS});if(r.access_token){_tk=r.access_token;_te=Date.now()+86300000;return _tk;}lastErr='Token:'+JSON.stringify(r).slice(0,200);if(lastErr.includes('EGW00133')){await new Promise(r=>setTimeout(r,62000));continue;}}catch(e){lastErr=e.message;}await new Promise(r=>setTimeout(r,5000));}throw new Error(lastErr||'token fail');}
 
 function toKis(d){if(!d)return '';d=String(d);if(d.includes('-')){const p=d.split('-');const y=p[0].length===2?(parseInt(p[0])>=70?'19':'20')+p[0]:p[0];return y+p[1]+p[2];}return d;}
 
@@ -74,7 +74,7 @@ module.exports=async function(req,res){
     if(!t1)return res.status(400).json({ok:false,error:'date 파라미터 필요'});
     const r=await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?'+new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code,FID_INPUT_DATE_1:t1,FID_INPUT_DATE_2:t2,FID_PERIOD_DIV_CODE:'D',FID_ORG_ADJ_PRC:'0'}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHKST03010100',custtype:'P'});
     if(r.rt_cd!=='0')return res.json({ok:false,code,date:t1,kis_error:r.msg1||r.msg_cd,raw:r});
-    const rows=(r.output2||[]).map(d=>({date:d.stck_bsop_date,close:+d.stck_clpr,open:+d.stck_oprc,high:+d.stck_hgpr,low:+d.stck_lwpr,vol:+d.acml_vol,rate:+d.prdy_ctrt}));
+    const rows=(r.output2||[]).map(d=>({date:d.stck_bsop_date,close:+d.stck_clpr,open:+d.stck_oprc,high:+d.stck_hgpr,low:+d.stck_lwpr,vol:+d.acml_vol,amt:+d.acml_tr_pbmn||0,rate:+d.prdy_ctrt}));
     const targetRow=date?rows.find(d=>d.date===t1):null;
     let verification=null;
     if(verify_rate!==undefined&&targetRow){
