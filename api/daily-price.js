@@ -85,7 +85,7 @@ module.exports=async function(req,res){
       const exp=parseFloat(verify_rate),act=targetRow.rate,diff=Math.abs(act-exp);
       verification={expected_rate:exp,actual_rate:act,diff:Math.round(diff*100)/100, match:diff<=1.0,status:diff<=0.5?'정확':diff<=1.0?'근사':'불일치'};
     }
-    if(rows[0]){try{const nxt=await fetchNxt(code);if(nxt&&nxt.amt>0){rows[0].amt=nxt.amt;rows[0].vol=nxt.vol||rows[0].vol;rows[0].high=nxt.high||rows[0].high;rows[0].low=nxt.low||rows[0].low;if(rows[0].rate===null||rows[0].rate===0)rows[0].rate=nxt.rate;rows[0]._nxt=true;}}catch(e){}}
+    if(rows[0]){try{const nxt=await fetchNxt(code);if(nxt&&nxt.amt>0){rows[0].amt=nxt.amt;rows[0].vol=nxt.vol||rows[0].vol;rows[0].high=nxt.high||rows[0].high;rows[0].low=nxt.low||rows[0].low;if(!rows[0].rate||isNaN(rows[0].rate))rows[0].rate=nxt.rate;rows[0]._nxt=true;}}catch(e){}}
   return res.json({ok:true,code,name:(r.output1||{}).hts_kor_isnm||'', market:(r.output1||{}).rprs_mrkt_kor_name||'', target_date:t1,target_row:targetRow,all_rows:rows,verification});
   }catch(e){return res.status(500).json({ok:false,error:e.message});}
 };
