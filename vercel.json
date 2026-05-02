@@ -1,9 +1,6 @@
 {
   "framework": null,
   "functions": {
-    "api/batch-scan.js": {
-      "maxDuration": 60
-    },
     "api/save-stocks.js": {
       "maxDuration": 60
     },
@@ -15,8 +12,17 @@
     },
     "api/analyze.js": {
       "maxDuration": 60
+    },
+    "api/auto-signals.js": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/auto-signals?action=generate",
+      "schedule": "30 10 * * 1-5"
+    }
+  ],
   "headers": [
     {
       "source": "/",
