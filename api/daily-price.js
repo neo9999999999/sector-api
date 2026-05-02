@@ -13,6 +13,8 @@ function toKis(d){if(!d)return '';d=String(d);if(d.includes('-')){const p=d.spli
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+async function fetchNxt(c){try{const nv=await fetch('https://m.stock.naver.com/api/stock/'+c+'/integration',{headers:{'User-Agent':'Mozilla/5.0'}});if(!nv.ok)return null;const d=await nv.json();const ti=d.totalInfos||[];const f=k=>{const x=ti.find(y=>y.code===k);return x?x.value:'';};const n=s=>+String(s).replace(/[^\d]/g,'')||0;const amtBM=n(f('accumulatedTradingValue'));const di=(d.dealTrendInfos&&d.dealTrendInfos[0])||{};const lastC=n(f('lastClosePrice'));const closeR=n(String(di.closePrice||'').replace(/[^\d]/g,''));return{amt:amtBM*1000000,vol:n(f('accumulatedTradingVolume')),high:n(f('highPrice')),low:n(f('lowPrice')),open:n(f('openPrice')),close:closeR,lastClose:lastC,rate:lastC>0?Math.round((closeR-lastC)/lastC*10000)/100:0};}catch(e){return null;}}
+
 async function fetchInv(code, tk){
   const r = await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-investor?'+new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHKST01010900',custtype:'P'});
   return r;
@@ -83,6 +85,7 @@ module.exports=async function(req,res){
       const exp=parseFloat(verify_rate),act=targetRow.rate,diff=Math.abs(act-exp);
       verification={expected_rate:exp,actual_rate:act,diff:Math.round(diff*100)/100, match:diff<=1.0,status:diff<=0.5?'정확':diff<=1.0?'근사':'불일치'};
     }
-    return res.json({ok:true,code,name:(r.output1||{}).hts_kor_isnm||'', market:(r.output1||{}).rprs_mrkt_kor_name||'', target_date:t1,target_row:targetRow,all_rows:rows,verification});
+    if(rows[0]){try{const nxt=await fetchNxt(code);if(nxt&&nxt.amt>0){rows[0].amt=nxt.amt;rows[0].vol=nxt.vol||rows[0].vol;rows[0].high=nxt.high||rows[0].high;rows[0].low=nxt.low||rows[0].low;if(rows[0].rate===null||rows[0].rate===0)rows[0].rate=nxt.rate;rows[0]._nxt=true;}}catch(e){}}
+  return res.json({ok:true,code,name:(r.output1||{}).hts_kor_isnm||'', market:(r.output1||{}).rprs_mrkt_kor_name||'', target_date:t1,target_row:targetRow,all_rows:rows,verification});
   }catch(e){return res.status(500).json({ok:false,error:e.message});}
 };
