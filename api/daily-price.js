@@ -55,7 +55,9 @@ module.exports=async function(req,res){
       return res.json({ok:true,code,rt_cd:r.rt_cd,msg:r.msg1,output:r.output||[]});
     }
 
-    if(kind==='inv2'){
+    if(kind==='naver'){try{const u1='https://m.stock.naver.com/api/stock/'+code+'/integration';const u2='https://finance.naver.com/item/main.naver?code='+code;const r1=await fetch(u1,{headers:{'User-Agent':'Mozilla/5.0'}});const t1=await r1.text();let r2text='';try{const r2=await fetch(u2,{headers:{'User-Agent':'Mozilla/5.0'}});r2text=await r2.text();}catch(e){r2text='ERR:'+e.message;}return res.json({mobile_status:r1.status,mobile_len:t1.length,mobile_body:t1.slice(0,8000),pc_len:r2text.length,pc_body_sample:r2text.slice(0,3000)});}catch(e){return res.json({err:e.message});}}
+
+  if(kind==='inv2'){
       if(!code) return res.status(400).json({ok:false,error:'kind=inv2 requires code'});
       const f = toKis(from||date) || '20260101';
       const t = toKis(to||date) || '20261231';
