@@ -11,7 +11,7 @@ module.exports=async function(req,res){
   try{
     var body=req.body;
     if(!body||!body.messages)return res.status(400).json({error:"messages required"});
-    var payload={model:body.model||"claude-sonnet-4-20250514",max_tokens:body.max_tokens||2000,system:body.system||"",messages:body.messages};
+    var payload={model:body.model||"claude-haiku-4-5-20251001",max_tokens:body.max_tokens||4000,system:(typeof body.system==="string"&&body.system.length>4000?[{type:"text",text:body.system,cache_control:{type:"ephemeral"}}]:(body.system||"")),messages:body.messages};
     var data=await post(payload);
     res.status(200).json(data);
   }catch(e){res.status(500).json({error:e.message})}
