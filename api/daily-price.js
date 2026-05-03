@@ -74,18 +74,18 @@ module.exports=async function(req,res){
 
     if(!code)return res.status(400).json({ok:false,error:'code 파라미터 필요'});
 
-    const t1=toKis(date||from), t2=toKis(to||date||from);
+    const t1=toKis(from||date), t2=toKis(to||date||from); const targetYmd=toKis(date||to||from);
     if(!t1)return res.status(400).json({ok:false,error:'date 파라미터 필요'});
     const r=await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?'+new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code,FID_INPUT_DATE_1:t1,FID_INPUT_DATE_2:t2,FID_PERIOD_DIV_CODE:'D',FID_ORG_ADJ_PRC:'0'}),{authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHKST03010100',custtype:'P'});
     if(r.rt_cd!=='0')return res.json({ok:false,code,date:t1,kis_error:r.msg1||r.msg_cd,raw:r});
     const rows=(r.output2||[]).map(d=>({date:d.stck_bsop_date,close:+d.stck_clpr,open:+d.stck_oprc,high:+d.stck_hgpr,low:+d.stck_lwpr,vol:+d.acml_vol,amt:+d.acml_tr_pbmn||0,rate:+d.prdy_ctrt}));
-    const targetRow=date?rows.find(d=>d.date===t1):null;
+    const targetRow=targetYmd?rows.find(d=>d.date===targetYmd):null;
     let verification=null;
     if(verify_rate!==undefined&&targetRow){
       const exp=parseFloat(verify_rate),act=targetRow.rate,diff=Math.abs(act-exp);
       verification={expected_rate:exp,actual_rate:act,diff:Math.round(diff*100)/100, match:diff<=1.0,status:diff<=0.5?'정확':diff<=1.0?'근사':'불일치'};
     }
     if(rows[0]){const _td=new Date();const _ty=_td.getFullYear()+String(_td.getMonth()+1).padStart(2,"0")+String(_td.getDate()).padStart(2,"0");if(rows[0].date===_ty){try{const nxt=await fetchNxt(code);if(nxt&&nxt.amt>0){rows[0].amt=nxt.amt;rows[0].vol=nxt.vol||rows[0].vol;rows[0].high=nxt.high||rows[0].high;rows[0].low=nxt.low||rows[0].low;if(!rows[0].rate||isNaN(rows[0].rate))rows[0].rate=nxt.rate;rows[0]._nxt=true;}}catch(e){}}}
-  return res.json({ok:true,code,name:(r.output1||{}).hts_kor_isnm||'', market:(r.output1||{}).rprs_mrkt_kor_name||'', target_date:t1,target_row:targetRow,all_rows:rows,verification});
+  return res.json({ok:true,code,name:(r.output1||{}).hts_kor_isnm||'', market:(r.output1||{}).rprs_mrkt_kor_name||'', target_date:targetYmd,target_row:targetRow,all_rows:rows,verification});
   }catch(e){return res.status(500).json({ok:false,error:e.message});}
 };
