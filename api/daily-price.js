@@ -37,6 +37,24 @@ module.exports=async function(req,res){
     const tk=await tok();
     const {code,date,from,to,name,verify_rate,kind,codes}=req.query;
 
+    if(kind==='prog'){
+      // KIS program-trade-by-stock — try with date param
+      if(!code) return res.status(400).json({ok:false,error:'kind=prog requires code'});
+      const tDate = toKis(date) || '';
+      // Try TR FHPPG04650201 (daily program trade by stock)
+      const params1 = new URLSearchParams({FID_COND_MRKT_DIV_CODE:'J',FID_INPUT_ISCD:code});
+      if(tDate) params1.append('FID_INPUT_DATE_1', tDate);
+      const r1 = await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-program-trade-by-stock?'+params1.toString(),
+        {authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHPPG04650100',custtype:'P'});
+      // Also try TR FHPPG04650201
+      const r2 = await rq('GET','/uapi/domestic-stock/v1/quotations/inquire-program-trade-by-stock?'+params1.toString(),
+        {authorization:'Bearer '+tk,appkey:AK,appsecret:AS,tr_id:'FHPPG04650201',custtype:'P'});
+      return res.json({ok:true,code,date:tDate,
+        tr1:{rt_cd:r1.rt_cd,msg:r1.msg1,output_keys:r1.output?Object.keys(r1.output):null,output_sample:r1.output?(Array.isArray(r1.output)?r1.output.slice(0,3):r1.output):null},
+        tr2:{rt_cd:r2.rt_cd,msg:r2.msg1,output_keys:r2.output?Object.keys(r2.output):null,output_sample:r2.output?(Array.isArray(r2.output)?r2.output.slice(0,3):r2.output):null}
+      });
+    }
+
     if(kind==='inv'){
       if(codes){
         const list=codes.split(',').filter(Boolean).slice(0,20);
