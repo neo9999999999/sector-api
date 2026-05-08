@@ -120,6 +120,36 @@ async function fetchMarketAllPages(sosok, marketName, maxPages) {
 // KIS — investor info enrichment
 //   1) inquire-price: 시가/고가/저가/거래대금
 //   2) inquire-investor: 기관(orgn) / 외국인(frgn) 순매수 수량 (당일)
+// KIS 일봉 130일치 — 60일/120일 신고가 판정용
+async function fetchH60H120(tk, code, todayClose) {
+  if (!todayClose) return { h60: 0, h120: 0 };
+  try {
+    const t = new Date(Date.now() + 9 * 3600000);
+    const t1 = new Date(t.getTime() - 200 * 86400000); // 200일 전 (영업일 130일 확보)
+    const fmt = d => d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+    const r = await rqKis("GET",
+      "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?" +
+      new URLSearchParams({
+        FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: code,
+        FID_INPUT_DATE_1: fmt(t1), FID_INPUT_DATE_2: fmt(t),
+        FID_PERIOD_DIV_CODE: "D", FID_ORG_ADJ_PRC: "0"
+      }).toString(),
+      { authorization: "Bearer " + tk, appkey: AK, appsecret: AS, tr_id: "FHKST03010100", custtype: "P" }
+    );
+    if (!r.output2 || !r.output2.length) return { h60: 0, h120: 0 };
+    const closes = r.output2.map(d => +d.stck_clpr || 0).filter(x => x > 0);
+    // output2[0]=오늘 (가장 최근). 과거 60/120일 종가 max 와 비교
+    const past60 = closes.slice(1, 61);
+    const past120 = closes.slice(1, 121);
+    const max60 = past60.length ? Math.max(...past60) : 0;
+    const max120 = past120.length ? Math.max(...past120) : 0;
+    return {
+      h60: max60 > 0 && todayClose >= max60 ? 1 : 0,
+      h120: max120 > 0 && todayClose >= max120 ? 1 : 0
+    };
+  } catch (e) { return { h60: 0, h120: 0 }; }
+}
+
 async function enrichInvestor(tk, stock) {
   let priceData = {};
   let invData = { inst: 0, frgn: 0 };
@@ -159,6 +189,10 @@ async function enrichInvestor(tk, stock) {
       };
     }
   } catch (e) { /* skip */ }
+  // 60일/120일 신고가 판정 (1차 enrich 후 추가 호출)
+  let h = { h60: 0, h120: 0 };
+  await w(80);
+  try { h = await fetchH60H120(tk, stock.code, stock.price); } catch (e) {}
   return {
     ...stock,
     open: priceData.open || 0,
@@ -167,7 +201,9 @@ async function enrichInvestor(tk, stock) {
     amt: priceData.amt || Math.round((stock.price * stock.vol) / 1e8),
     inst: invData.inst,
     frgn: invData.frgn,
-    prog: progData.prog   // 프로그램 순매수 (오늘 누적)
+    prog: progData.prog,   // 프로그램 순매수 (오늘 누적)
+    h60: h.h60,            // 60일 신고가 (1=신고가, 0=비신고가)
+    h120: h.h120           // 120일 신고가
   };
 }
 
@@ -205,7 +241,9 @@ function score(s) {
     investor: invL,
     wick: Math.round(wk * 10) / 10,
     etf, inst: s.inst, frgn: s.frgn,
-    prog: s.prog || 0   // 프로그램 순매수 수량 (오늘 누적)
+    prog: s.prog || 0,   // 프로그램 순매수 수량 (오늘 누적)
+    h60: s.h60 || 0,     // 60일 신고가
+    h120: s.h120 || 0    // 120일 신고가
   };
 }
 
@@ -233,16 +271,18 @@ async function saveSignals(signals, today) {
           supply: s.investor, wick: s.wick, vol: s.amount, market: s.market,
           tp1: s.tp1, tp2: s.tp2, sl: s.sl, outcome: null,
           inst: s.inst || 0, frgn: s.frgn || 0, prog: s.prog || 0,
+          h60: s.h60 || 0, h120: s.h120 || 0,
           saved_at: new Date(Date.now() + 9 * 3600000).toISOString().replace("T", " ").slice(0, 16)
         });
         existingByKey.set(key, true);
         added++;
-      } else if (ex.prog === undefined || ex.inst === undefined || ex.frgn === undefined) {
-        // 기존 항목에 inst/frgn/prog 없으면 채워넣기
+      } else if (ex.prog === undefined || ex.inst === undefined || ex.frgn === undefined || ex.h60 === undefined) {
         ex.inst = s.inst || 0;
         ex.frgn = s.frgn || 0;
         ex.prog = s.prog || 0;
-        ex.supply = s.investor;  // 수급 라벨도 새로
+        ex.h60 = s.h60 || 0;
+        ex.h120 = s.h120 || 0;
+        ex.supply = s.investor;
         updated++;
       }
     });
