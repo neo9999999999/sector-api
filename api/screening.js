@@ -123,7 +123,8 @@ async function fetchMarketAllPages(sosok, marketName, maxPages) {
 async function enrichInvestor(tk, stock) {
   let priceData = {};
   let invData = { inst: 0, frgn: 0 };
-  // 1) Price/amount
+  let progData = { prog: 0 };
+  // 1) Price/amount + 프로그램 순매수 (당일)
   try {
     const rp = await rqKis("GET",
       "/uapi/domestic-stock/v1/quotations/inquire-price?" +
@@ -138,10 +139,12 @@ async function enrichInvestor(tk, stock) {
         low: +o.stck_lwpr || 0,
         amt: Math.round((+o.acml_tr_pbmn || stock.price * stock.vol) / 1e8)
       };
+      // 프로그램매매 순매수 (오늘 누적)
+      progData.prog = +o.pgtr_ntby_qty || 0;
     }
   } catch (e) { /* skip */ }
   await w(80);
-  // 2) Investor data — orgn(기관) / frgn(외국인) net buy quantity for today
+  // 2) Investor data — orgn(기관) / frgn(외국인)
   try {
     const ri = await rqKis("GET",
       "/uapi/domestic-stock/v1/quotations/inquire-investor?" +
@@ -149,10 +152,10 @@ async function enrichInvestor(tk, stock) {
       { authorization: "Bearer " + tk, appkey: AK, appsecret: AS, tr_id: "FHKST01010900", custtype: "P" }
     );
     if (ri.output && ri.output.length > 0) {
-      const o = ri.output[0];  // most recent day
+      const o = ri.output[0];
       invData = {
-        inst: +o.orgn_ntby_qty || 0,   // 기관 순매수 (CORRECT field)
-        frgn: +o.frgn_ntby_qty || 0,   // 외국인 순매수
+        inst: +o.orgn_ntby_qty || 0,
+        frgn: +o.frgn_ntby_qty || 0,
       };
     }
   } catch (e) { /* skip */ }
@@ -163,7 +166,8 @@ async function enrichInvestor(tk, stock) {
     low: priceData.low || 0,
     amt: priceData.amt || Math.round((stock.price * stock.vol) / 1e8),
     inst: invData.inst,
-    frgn: invData.frgn
+    frgn: invData.frgn,
+    prog: progData.prog   // 프로그램 순매수 (오늘 누적)
   };
 }
 
@@ -200,7 +204,8 @@ function score(s) {
     tp1: g === "B" ? 12 : 15, tp2: 50, sl: 13,
     investor: invL,
     wick: Math.round(wk * 10) / 10,
-    etf, inst: s.inst, frgn: s.frgn
+    etf, inst: s.inst, frgn: s.frgn,
+    prog: s.prog || 0   // 프로그램 순매수 수량 (오늘 누적)
   };
 }
 
@@ -226,6 +231,7 @@ async function saveSignals(signals, today) {
           entry_price: s.price, rate: s.change, score: s.score, grade: s.grade,
           supply: s.investor, wick: s.wick, vol: s.amount, market: s.market,
           tp1: s.tp1, tp2: s.tp2, sl: s.sl, outcome: null,
+          inst: s.inst || 0, frgn: s.frgn || 0, prog: s.prog || 0,  // 누적 분석용
           saved_at: new Date(Date.now() + 9 * 3600000).toISOString().replace("T", " ").slice(0, 16)
         });
         existingKeys.add(key);
