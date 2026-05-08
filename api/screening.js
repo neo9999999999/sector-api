@@ -117,33 +117,53 @@ async function fetchMarketAllPages(sosok, marketName, maxPages) {
 }
 
 // ─────────────────────────────────────────────────────────
-// KIS — investor info enrichment (top N candidates only)
+// KIS — investor info enrichment
+//   1) inquire-price: 시가/고가/저가/거래대금
+//   2) inquire-investor: 기관(orgn) / 외국인(frgn) 순매수 수량 (당일)
 async function enrichInvestor(tk, stock) {
+  let priceData = {};
+  let invData = { inst: 0, frgn: 0 };
+  // 1) Price/amount
   try {
-    const r = await rqKis("GET",
+    const rp = await rqKis("GET",
       "/uapi/domestic-stock/v1/quotations/inquire-price?" +
       new URLSearchParams({ FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: stock.code }).toString(),
       { authorization: "Bearer " + tk, appkey: AK, appsecret: AS, tr_id: "FHKST01010100", custtype: "P" }
     );
-    if (r.output) {
-      const o = r.output;
-      return {
-        ...stock,
+    if (rp.output) {
+      const o = rp.output;
+      priceData = {
         open: +o.stck_oprc || 0,
         high: +o.stck_hgpr || 0,
         low: +o.stck_lwpr || 0,
-        amt: Math.round((+o.acml_tr_pbmn || stock.price * stock.vol) / 1e8),
-        inst: +o.pgtr_ntby_qty || 0,  // 기관 순매수
-        frgn: +o.frgn_ntby_qty || 0,  // 외국인 순매수
+        amt: Math.round((+o.acml_tr_pbmn || stock.price * stock.vol) / 1e8)
       };
     }
   } catch (e) { /* skip */ }
-  // Fallback: compute amt from volume * price
+  await w(80);
+  // 2) Investor data — orgn(기관) / frgn(외국인) net buy quantity for today
+  try {
+    const ri = await rqKis("GET",
+      "/uapi/domestic-stock/v1/quotations/inquire-investor?" +
+      new URLSearchParams({ FID_COND_MRKT_DIV_CODE: "J", FID_INPUT_ISCD: stock.code }).toString(),
+      { authorization: "Bearer " + tk, appkey: AK, appsecret: AS, tr_id: "FHKST01010900", custtype: "P" }
+    );
+    if (ri.output && ri.output.length > 0) {
+      const o = ri.output[0];  // most recent day
+      invData = {
+        inst: +o.orgn_ntby_qty || 0,   // 기관 순매수 (CORRECT field)
+        frgn: +o.frgn_ntby_qty || 0,   // 외국인 순매수
+      };
+    }
+  } catch (e) { /* skip */ }
   return {
     ...stock,
-    open: 0, high: 0, low: 0,
-    amt: Math.round((stock.price * stock.vol) / 1e8),
-    inst: 0, frgn: 0
+    open: priceData.open || 0,
+    high: priceData.high || 0,
+    low: priceData.low || 0,
+    amt: priceData.amt || Math.round((stock.price * stock.vol) / 1e8),
+    inst: invData.inst,
+    frgn: invData.frgn
   };
 }
 
