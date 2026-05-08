@@ -220,29 +220,37 @@ async function saveSignals(signals, today) {
       existing.signals = JSON.parse(Buffer.from(r.content, "base64").toString());
       existing.sha = r.sha;
     }
-    const existingKeys = new Set(existing.signals.map(s => s.code + "_" + s.signal_date));
-    let added = 0;
+    const existingByKey = new Map(existing.signals.map(s => [s.code + "_" + s.signal_date, s]));
+    let added = 0, updated = 0;
     signals.filter(s => s.grade !== "X").forEach(s => {
       const key = s.code + "_" + today;
-      if (!existingKeys.has(key)) {
+      const ex = existingByKey.get(key);
+      if (!ex) {
         existing.signals.unshift({
           id: Date.now() + "_" + s.code,
           code: s.code, name: s.name, signal_date: today,
           entry_price: s.price, rate: s.change, score: s.score, grade: s.grade,
           supply: s.investor, wick: s.wick, vol: s.amount, market: s.market,
           tp1: s.tp1, tp2: s.tp2, sl: s.sl, outcome: null,
-          inst: s.inst || 0, frgn: s.frgn || 0, prog: s.prog || 0,  // 누적 분석용
+          inst: s.inst || 0, frgn: s.frgn || 0, prog: s.prog || 0,
           saved_at: new Date(Date.now() + 9 * 3600000).toISOString().replace("T", " ").slice(0, 16)
         });
-        existingKeys.add(key);
+        existingByKey.set(key, true);
         added++;
+      } else if (ex.prog === undefined || ex.inst === undefined || ex.frgn === undefined) {
+        // 기존 항목에 inst/frgn/prog 없으면 채워넣기
+        ex.inst = s.inst || 0;
+        ex.frgn = s.frgn || 0;
+        ex.prog = s.prog || 0;
+        ex.supply = s.investor;  // 수급 라벨도 새로
+        updated++;
       }
     });
-    if (!added) return { saved: false, reason: "all duplicates" };
+    if (!added && !updated) return { saved: false, reason: "all duplicates, no updates needed" };
     const content = Buffer.from(JSON.stringify(existing.signals, null, 2)).toString("base64");
     await rqGH("PUT", "/repos/" + GH_OWNER + "/" + GH_REPO + "/contents/" + SIGNALS_PATH,
-      { message: "signals " + today, content, ...(existing.sha ? { sha: existing.sha } : {}) });
-    return { saved: true, added, total: existing.signals.length };
+      { message: "signals " + today + " (added " + added + ", updated " + updated + ")", content, ...(existing.sha ? { sha: existing.sha } : {}) });
+    return { saved: true, added, updated, total: existing.signals.length };
   } catch (e) { return { saved: false, reason: e.message }; }
 }
 
