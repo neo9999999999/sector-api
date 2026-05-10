@@ -21,6 +21,12 @@
     },
     "api/intraday.js": {
       "maxDuration": 300
+    },
+    "api/backfill.js": {
+      "maxDuration": 300
+    },
+    "api/track-intraday.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -39,6 +45,10 @@
     {
       "path": "/api/intraday",
       "schedule": "35 6 * * 1-5"
+    },
+    {
+      "path": "/api/track-intraday",
+      "schedule": "40 6 * * 1-5"
     }
   ],
   "headers": [
