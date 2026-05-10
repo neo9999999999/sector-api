@@ -27,6 +27,9 @@
     },
     "api/track-intraday.js": {
       "maxDuration": 300
+    },
+    "api/extend-ohlc.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
