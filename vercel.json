@@ -29,6 +29,10 @@
       "schedule": "0 6 * * 1-5"
     },
     {
+      "path": "/api/screening",
+      "schedule": "20 6 * * 1-5"
+    },
+    {
       "path": "/api/auto-signals?action=generate",
       "schedule": "30 10 * * 1-5"
     },
