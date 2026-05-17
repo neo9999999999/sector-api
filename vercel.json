@@ -1,28 +1,61 @@
 {
   "framework": null,
   "functions": {
-    "api/save-stocks.js": { "maxDuration": 60 },
-    "api/stock-master.js": { "maxDuration": 60 },
-    "api/daily-price.js": { "maxDuration": 30 },
-    "api/analyze.js": { "maxDuration": 60 },
-    "api/auto-signals.js": { "maxDuration": 60 },
-    "api/screening.js": { "maxDuration": 60 },
-    "api/intraday.js": { "maxDuration": 300 },
-    "api/backfill.js": { "maxDuration": 300 },
-    "api/track-intraday.js": { "maxDuration": 300 },
-    "api/extend-ohlc.js": { "maxDuration": 300 },
-    "api/themes.js": { "maxDuration": 60 }
+    "api/save-stocks.js": {
+      "maxDuration": 60
+    },
+    "api/stock-master.js": {
+      "maxDuration": 60
+    },
+    "api/daily-price.js": {
+      "maxDuration": 30
+    },
+    "api/analyze.js": {
+      "maxDuration": 60
+    },
+    "api/auto-signals.js": {
+      "maxDuration": 60
+    },
+    "api/screening.js": {
+      "maxDuration": 60
+    },
+    "api/intraday.js": {
+      "maxDuration": 300
+    },
+    "api/backfill.js": {
+      "maxDuration": 300
+    },
+    "api/track-intraday.js": {
+      "maxDuration": 300
+    },
+    "api/extend-ohlc.js": {
+      "maxDuration": 300
+    },
+    "api/themes.js": {
+      "maxDuration": 60
+    }
   },
   "crons": [
-    { "path": "/api/screening", "schedule": "20 6 * * 1-5" },
-    { "path": "/api/auto-signals?action=generate", "schedule": "30 10 * * 1-5" }
+    {
+      "path": "/api/screening",
+      "schedule": "20 6 * * 1-5"
+    },
+    {
+      "path": "/api/auto-signals?action=generate",
+      "schedule": "30 10 * * 1-5"
+    }
   ],
   "headers": [
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     }
-  ]
+  ],
+  "buildCommand": "",
+  "installCommand": ""
 }
